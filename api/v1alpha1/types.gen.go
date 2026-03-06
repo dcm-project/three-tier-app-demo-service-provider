@@ -7,6 +7,60 @@ import (
 	"time"
 )
 
+// Defines values for CreateStackRequestServiceType.
+const (
+	ThreeTierAppDemo CreateStackRequestServiceType = "three_tier_app_demo"
+)
+
+// Defines values for StackStatus.
+const (
+	DELETED StackStatus = "DELETED"
+	FAILED  StackStatus = "FAILED"
+	PENDING StackStatus = "PENDING"
+	RUNNING StackStatus = "RUNNING"
+)
+
+// AppTierSpec Application tier. Uses OCI image.
+type AppTierSpec struct {
+	// Image OCI image reference for the application.
+	Image   string       `json:"image"`
+	Network *TierNetwork `json:"network,omitempty"`
+}
+
+// ContainerPort defines model for ContainerPort.
+type ContainerPort struct {
+	ContainerPort int `json:"container_port"`
+}
+
+// CreateStackRequest Request body for creating a 3-tier app
+type CreateStackRequest struct {
+	Metadata StackMetadata `json:"metadata"`
+
+	// Path Resource path (server-generated)
+	Path          *string                 `json:"path,omitempty"`
+	ProviderHints *map[string]interface{} `json:"provider_hints,omitempty"`
+
+	// ServiceType Service type (must be three_tier_app_demo)
+	ServiceType *CreateStackRequestServiceType `json:"service_type,omitempty"`
+
+	// Spec Three-tier structure (database, app, web)
+	Spec ThreeTierSpec `json:"spec"`
+}
+
+// CreateStackRequestServiceType Service type (must be three_tier_app_demo)
+type CreateStackRequestServiceType string
+
+// DatabaseTierSpec Database tier. Uses abstract identifiers (engine, version) only.
+// SP maps engine+version to OCI image (e.g. postgres+16 -> docker.io/library/postgres:16).
+type DatabaseTierSpec struct {
+	// Engine Database engine (postgres, mysql).
+	Engine  string       `json:"engine"`
+	Network *TierNetwork `json:"network,omitempty"`
+
+	// Version Database engine version.
+	Version string `json:"version"`
+}
+
 // Error RFC 7807 problem details
 type Error struct {
 	Detail   *string `json:"detail,omitempty"`
@@ -23,19 +77,22 @@ type Health struct {
 	Type  *string `json:"type,omitempty"`
 }
 
-// Stack A 3-tier demo stack (web, app, db)
+// Stack A 3-tier demo app (web, app, db)
 type Stack struct {
 	CreateTime *time.Time `json:"create_time,omitempty"`
 
 	// Id Unique stack ID
 	Id *string `json:"id,omitempty"`
 
-	// Name Human-readable stack name
-	Name string `json:"name"`
-
 	// Path Resource path
-	Path       *string    `json:"path,omitempty"`
-	UpdateTime *time.Time `json:"update_time,omitempty"`
+	Path *string `json:"path,omitempty"`
+
+	// Spec Three-tier structure (database, app, web)
+	Spec ThreeTierSpec `json:"spec"`
+
+	// Status Aggregated status of the 3-tier stack
+	Status     StackStatus `json:"status"`
+	UpdateTime *time.Time  `json:"update_time,omitempty"`
 }
 
 // StackList defines model for StackList.
@@ -44,11 +101,51 @@ type StackList struct {
 	Stacks        *[]Stack `json:"stacks,omitempty"`
 }
 
-// ListStacksParams defines parameters for ListStacks.
-type ListStacksParams struct {
+// StackMetadata defines model for StackMetadata.
+type StackMetadata struct {
+	Labels *map[string]string `json:"labels,omitempty"`
+	Name   string             `json:"name"`
+}
+
+// StackStatus Aggregated status of the 3-tier stack
+type StackStatus string
+
+// ThreeTierSpec Three-tier structure (database, app, web)
+type ThreeTierSpec struct {
+	// App Application tier. Uses OCI image.
+	App AppTierSpec `json:"app"`
+
+	// Database Database tier. Uses abstract identifiers (engine, version) only.
+	// SP maps engine+version to OCI image (e.g. postgres+16 -> docker.io/library/postgres:16).
+	Database DatabaseTierSpec `json:"database"`
+
+	// Web Web tier. Uses OCI image.
+	Web WebTierSpec `json:"web"`
+}
+
+// TierNetwork defines model for TierNetwork.
+type TierNetwork struct {
+	Ports *[]ContainerPort `json:"ports,omitempty"`
+}
+
+// WebTierSpec Web tier. Uses OCI image.
+type WebTierSpec struct {
+	// Image OCI image reference for the web server.
+	Image   string       `json:"image"`
+	Network *TierNetwork `json:"network,omitempty"`
+}
+
+// ListThreeTierAppsParams defines parameters for ListThreeTierApps.
+type ListThreeTierAppsParams struct {
 	MaxPageSize *int32  `form:"max_page_size,omitempty" json:"max_page_size,omitempty"`
 	PageToken   *string `form:"page_token,omitempty" json:"page_token,omitempty"`
 }
 
-// CreateStackJSONRequestBody defines body for CreateStack for application/json ContentType.
-type CreateStackJSONRequestBody = Stack
+// CreateThreeTierAppParams defines parameters for CreateThreeTierApp.
+type CreateThreeTierAppParams struct {
+	// Id Optional stack ID for idempotent creation
+	Id *string `form:"id,omitempty" json:"id,omitempty"`
+}
+
+// CreateThreeTierAppJSONRequestBody defines body for CreateThreeTierApp for application/json ContentType.
+type CreateThreeTierAppJSONRequestBody = CreateStackRequest

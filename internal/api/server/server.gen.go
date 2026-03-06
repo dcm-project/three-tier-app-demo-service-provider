@@ -20,18 +20,18 @@ type ServerInterface interface {
 	// Health Check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
-	// List Stacks
-	// (GET /stacks)
-	ListStacks(w http.ResponseWriter, r *http.Request, params ListStacksParams)
-	// Create Stack
-	// (POST /stacks)
-	CreateStack(w http.ResponseWriter, r *http.Request)
-	// Delete Stack
-	// (DELETE /stacks/{stackId})
-	DeleteStack(w http.ResponseWriter, r *http.Request, stackId string)
-	// Get Stack
-	// (GET /stacks/{stackId})
-	GetStack(w http.ResponseWriter, r *http.Request, stackId string)
+	// List Three-Tier Apps
+	// (GET /three-tier-apps)
+	ListThreeTierApps(w http.ResponseWriter, r *http.Request, params ListThreeTierAppsParams)
+	// Create Three-Tier App
+	// (POST /three-tier-apps)
+	CreateThreeTierApp(w http.ResponseWriter, r *http.Request, params CreateThreeTierAppParams)
+	// Delete Three-Tier App
+	// (DELETE /three-tier-apps/{threeTierAppId})
+	DeleteThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string)
+	// Get Three-Tier App
+	// (GET /three-tier-apps/{threeTierAppId})
+	GetThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -44,27 +44,27 @@ func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// List Stacks
-// (GET /stacks)
-func (_ Unimplemented) ListStacks(w http.ResponseWriter, r *http.Request, params ListStacksParams) {
+// List Three-Tier Apps
+// (GET /three-tier-apps)
+func (_ Unimplemented) ListThreeTierApps(w http.ResponseWriter, r *http.Request, params ListThreeTierAppsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Create Stack
-// (POST /stacks)
-func (_ Unimplemented) CreateStack(w http.ResponseWriter, r *http.Request) {
+// Create Three-Tier App
+// (POST /three-tier-apps)
+func (_ Unimplemented) CreateThreeTierApp(w http.ResponseWriter, r *http.Request, params CreateThreeTierAppParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Delete Stack
-// (DELETE /stacks/{stackId})
-func (_ Unimplemented) DeleteStack(w http.ResponseWriter, r *http.Request, stackId string) {
+// Delete Three-Tier App
+// (DELETE /three-tier-apps/{threeTierAppId})
+func (_ Unimplemented) DeleteThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Get Stack
-// (GET /stacks/{stackId})
-func (_ Unimplemented) GetStack(w http.ResponseWriter, r *http.Request, stackId string) {
+// Get Three-Tier App
+// (GET /three-tier-apps/{threeTierAppId})
+func (_ Unimplemented) GetThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -91,13 +91,13 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
-// ListStacks operation middleware
-func (siw *ServerInterfaceWrapper) ListStacks(w http.ResponseWriter, r *http.Request) {
+// ListThreeTierApps operation middleware
+func (siw *ServerInterfaceWrapper) ListThreeTierApps(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params ListStacksParams
+	var params ListThreeTierAppsParams
 
 	// ------------- Optional query parameter "max_page_size" -------------
 
@@ -116,7 +116,7 @@ func (siw *ServerInterfaceWrapper) ListStacks(w http.ResponseWriter, r *http.Req
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListStacks(w, r, params)
+		siw.Handler.ListThreeTierApps(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -126,36 +126,24 @@ func (siw *ServerInterfaceWrapper) ListStacks(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
-// CreateStack operation middleware
-func (siw *ServerInterfaceWrapper) CreateStack(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateStack(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DeleteStack operation middleware
-func (siw *ServerInterfaceWrapper) DeleteStack(w http.ResponseWriter, r *http.Request) {
+// CreateThreeTierApp operation middleware
+func (siw *ServerInterfaceWrapper) CreateThreeTierApp(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
-	// ------------- Path parameter "stackId" -------------
-	var stackId string
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateThreeTierAppParams
 
-	err = runtime.BindStyledParameterWithOptions("simple", "stackId", chi.URLParam(r, "stackId"), &stackId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	// ------------- Optional query parameter "id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "id", r.URL.Query(), &params.Id)
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "stackId", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
 		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteStack(w, r, stackId)
+		siw.Handler.CreateThreeTierApp(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -165,22 +153,47 @@ func (siw *ServerInterfaceWrapper) DeleteStack(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
-// GetStack operation middleware
-func (siw *ServerInterfaceWrapper) GetStack(w http.ResponseWriter, r *http.Request) {
+// DeleteThreeTierApp operation middleware
+func (siw *ServerInterfaceWrapper) DeleteThreeTierApp(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
-	// ------------- Path parameter "stackId" -------------
-	var stackId string
+	// ------------- Path parameter "threeTierAppId" -------------
+	var threeTierAppId string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "stackId", chi.URLParam(r, "stackId"), &stackId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "threeTierAppId", chi.URLParam(r, "threeTierAppId"), &threeTierAppId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "stackId", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "threeTierAppId", Err: err})
 		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetStack(w, r, stackId)
+		siw.Handler.DeleteThreeTierApp(w, r, threeTierAppId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetThreeTierApp operation middleware
+func (siw *ServerInterfaceWrapper) GetThreeTierApp(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "threeTierAppId" -------------
+	var threeTierAppId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "threeTierAppId", chi.URLParam(r, "threeTierAppId"), &threeTierAppId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "threeTierAppId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetThreeTierApp(w, r, threeTierAppId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -307,16 +320,16 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/stacks", wrapper.ListStacks)
+		r.Get(options.BaseURL+"/three-tier-apps", wrapper.ListThreeTierApps)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/stacks", wrapper.CreateStack)
+		r.Post(options.BaseURL+"/three-tier-apps", wrapper.CreateThreeTierApp)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/stacks/{stackId}", wrapper.DeleteStack)
+		r.Delete(options.BaseURL+"/three-tier-apps/{threeTierAppId}", wrapper.DeleteThreeTierApp)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/stacks/{stackId}", wrapper.GetStack)
+		r.Get(options.BaseURL+"/three-tier-apps/{threeTierAppId}", wrapper.GetThreeTierApp)
 	})
 
 	return r
@@ -338,148 +351,149 @@ func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	return json.NewEncoder(w).Encode(response)
 }
 
-type ListStacksRequestObject struct {
-	Params ListStacksParams
+type ListThreeTierAppsRequestObject struct {
+	Params ListThreeTierAppsParams
 }
 
-type ListStacksResponseObject interface {
-	VisitListStacksResponse(w http.ResponseWriter) error
+type ListThreeTierAppsResponseObject interface {
+	VisitListThreeTierAppsResponse(w http.ResponseWriter) error
 }
 
-type ListStacks200JSONResponse StackList
+type ListThreeTierApps200JSONResponse StackList
 
-func (response ListStacks200JSONResponse) VisitListStacksResponse(w http.ResponseWriter) error {
+func (response ListThreeTierApps200JSONResponse) VisitListThreeTierAppsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type ListStacks400ApplicationProblemPlusJSONResponse Error
+type ListThreeTierApps400ApplicationProblemPlusJSONResponse Error
 
-func (response ListStacks400ApplicationProblemPlusJSONResponse) VisitListStacksResponse(w http.ResponseWriter) error {
+func (response ListThreeTierApps400ApplicationProblemPlusJSONResponse) VisitListThreeTierAppsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(400)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type ListStacks500ApplicationProblemPlusJSONResponse Error
+type ListThreeTierApps500ApplicationProblemPlusJSONResponse Error
 
-func (response ListStacks500ApplicationProblemPlusJSONResponse) VisitListStacksResponse(w http.ResponseWriter) error {
+func (response ListThreeTierApps500ApplicationProblemPlusJSONResponse) VisitListThreeTierAppsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type CreateStackRequestObject struct {
-	Body *CreateStackJSONRequestBody
+type CreateThreeTierAppRequestObject struct {
+	Params CreateThreeTierAppParams
+	Body   *CreateThreeTierAppJSONRequestBody
 }
 
-type CreateStackResponseObject interface {
-	VisitCreateStackResponse(w http.ResponseWriter) error
+type CreateThreeTierAppResponseObject interface {
+	VisitCreateThreeTierAppResponse(w http.ResponseWriter) error
 }
 
-type CreateStack201JSONResponse Stack
+type CreateThreeTierApp201JSONResponse Stack
 
-func (response CreateStack201JSONResponse) VisitCreateStackResponse(w http.ResponseWriter) error {
+func (response CreateThreeTierApp201JSONResponse) VisitCreateThreeTierAppResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(201)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type CreateStack400ApplicationProblemPlusJSONResponse Error
+type CreateThreeTierApp400ApplicationProblemPlusJSONResponse Error
 
-func (response CreateStack400ApplicationProblemPlusJSONResponse) VisitCreateStackResponse(w http.ResponseWriter) error {
+func (response CreateThreeTierApp400ApplicationProblemPlusJSONResponse) VisitCreateThreeTierAppResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(400)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type CreateStack409ApplicationProblemPlusJSONResponse Error
+type CreateThreeTierApp409ApplicationProblemPlusJSONResponse Error
 
-func (response CreateStack409ApplicationProblemPlusJSONResponse) VisitCreateStackResponse(w http.ResponseWriter) error {
+func (response CreateThreeTierApp409ApplicationProblemPlusJSONResponse) VisitCreateThreeTierAppResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type CreateStack500ApplicationProblemPlusJSONResponse Error
+type CreateThreeTierApp500ApplicationProblemPlusJSONResponse Error
 
-func (response CreateStack500ApplicationProblemPlusJSONResponse) VisitCreateStackResponse(w http.ResponseWriter) error {
+func (response CreateThreeTierApp500ApplicationProblemPlusJSONResponse) VisitCreateThreeTierAppResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type DeleteStackRequestObject struct {
-	StackId string `json:"stackId"`
+type DeleteThreeTierAppRequestObject struct {
+	ThreeTierAppId string `json:"threeTierAppId"`
 }
 
-type DeleteStackResponseObject interface {
-	VisitDeleteStackResponse(w http.ResponseWriter) error
+type DeleteThreeTierAppResponseObject interface {
+	VisitDeleteThreeTierAppResponse(w http.ResponseWriter) error
 }
 
-type DeleteStack204Response struct {
+type DeleteThreeTierApp204Response struct {
 }
 
-func (response DeleteStack204Response) VisitDeleteStackResponse(w http.ResponseWriter) error {
+func (response DeleteThreeTierApp204Response) VisitDeleteThreeTierAppResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
 }
 
-type DeleteStack404ApplicationProblemPlusJSONResponse Error
+type DeleteThreeTierApp404ApplicationProblemPlusJSONResponse Error
 
-func (response DeleteStack404ApplicationProblemPlusJSONResponse) VisitDeleteStackResponse(w http.ResponseWriter) error {
+func (response DeleteThreeTierApp404ApplicationProblemPlusJSONResponse) VisitDeleteThreeTierAppResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type DeleteStack500ApplicationProblemPlusJSONResponse Error
+type DeleteThreeTierApp500ApplicationProblemPlusJSONResponse Error
 
-func (response DeleteStack500ApplicationProblemPlusJSONResponse) VisitDeleteStackResponse(w http.ResponseWriter) error {
+func (response DeleteThreeTierApp500ApplicationProblemPlusJSONResponse) VisitDeleteThreeTierAppResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetStackRequestObject struct {
-	StackId string `json:"stackId"`
+type GetThreeTierAppRequestObject struct {
+	ThreeTierAppId string `json:"threeTierAppId"`
 }
 
-type GetStackResponseObject interface {
-	VisitGetStackResponse(w http.ResponseWriter) error
+type GetThreeTierAppResponseObject interface {
+	VisitGetThreeTierAppResponse(w http.ResponseWriter) error
 }
 
-type GetStack200JSONResponse Stack
+type GetThreeTierApp200JSONResponse Stack
 
-func (response GetStack200JSONResponse) VisitGetStackResponse(w http.ResponseWriter) error {
+func (response GetThreeTierApp200JSONResponse) VisitGetThreeTierAppResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetStack404ApplicationProblemPlusJSONResponse Error
+type GetThreeTierApp404ApplicationProblemPlusJSONResponse Error
 
-func (response GetStack404ApplicationProblemPlusJSONResponse) VisitGetStackResponse(w http.ResponseWriter) error {
+func (response GetThreeTierApp404ApplicationProblemPlusJSONResponse) VisitGetThreeTierAppResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetStack500ApplicationProblemPlusJSONResponse Error
+type GetThreeTierApp500ApplicationProblemPlusJSONResponse Error
 
-func (response GetStack500ApplicationProblemPlusJSONResponse) VisitGetStackResponse(w http.ResponseWriter) error {
+func (response GetThreeTierApp500ApplicationProblemPlusJSONResponse) VisitGetThreeTierAppResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(500)
 
@@ -491,18 +505,18 @@ type StrictServerInterface interface {
 	// Health Check
 	// (GET /health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
-	// List Stacks
-	// (GET /stacks)
-	ListStacks(ctx context.Context, request ListStacksRequestObject) (ListStacksResponseObject, error)
-	// Create Stack
-	// (POST /stacks)
-	CreateStack(ctx context.Context, request CreateStackRequestObject) (CreateStackResponseObject, error)
-	// Delete Stack
-	// (DELETE /stacks/{stackId})
-	DeleteStack(ctx context.Context, request DeleteStackRequestObject) (DeleteStackResponseObject, error)
-	// Get Stack
-	// (GET /stacks/{stackId})
-	GetStack(ctx context.Context, request GetStackRequestObject) (GetStackResponseObject, error)
+	// List Three-Tier Apps
+	// (GET /three-tier-apps)
+	ListThreeTierApps(ctx context.Context, request ListThreeTierAppsRequestObject) (ListThreeTierAppsResponseObject, error)
+	// Create Three-Tier App
+	// (POST /three-tier-apps)
+	CreateThreeTierApp(ctx context.Context, request CreateThreeTierAppRequestObject) (CreateThreeTierAppResponseObject, error)
+	// Delete Three-Tier App
+	// (DELETE /three-tier-apps/{threeTierAppId})
+	DeleteThreeTierApp(ctx context.Context, request DeleteThreeTierAppRequestObject) (DeleteThreeTierAppResponseObject, error)
+	// Get Three-Tier App
+	// (GET /three-tier-apps/{threeTierAppId})
+	GetThreeTierApp(ctx context.Context, request GetThreeTierAppRequestObject) (GetThreeTierAppResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -558,25 +572,25 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ListStacks operation middleware
-func (sh *strictHandler) ListStacks(w http.ResponseWriter, r *http.Request, params ListStacksParams) {
-	var request ListStacksRequestObject
+// ListThreeTierApps operation middleware
+func (sh *strictHandler) ListThreeTierApps(w http.ResponseWriter, r *http.Request, params ListThreeTierAppsParams) {
+	var request ListThreeTierAppsRequestObject
 
 	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListStacks(ctx, request.(ListStacksRequestObject))
+		return sh.ssi.ListThreeTierApps(ctx, request.(ListThreeTierAppsRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListStacks")
+		handler = middleware(handler, "ListThreeTierApps")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListStacksResponseObject); ok {
-		if err := validResponse.VisitListStacksResponse(w); err != nil {
+	} else if validResponse, ok := response.(ListThreeTierAppsResponseObject); ok {
+		if err := validResponse.VisitListThreeTierAppsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -584,11 +598,13 @@ func (sh *strictHandler) ListStacks(w http.ResponseWriter, r *http.Request, para
 	}
 }
 
-// CreateStack operation middleware
-func (sh *strictHandler) CreateStack(w http.ResponseWriter, r *http.Request) {
-	var request CreateStackRequestObject
+// CreateThreeTierApp operation middleware
+func (sh *strictHandler) CreateThreeTierApp(w http.ResponseWriter, r *http.Request, params CreateThreeTierAppParams) {
+	var request CreateThreeTierAppRequestObject
 
-	var body CreateStackJSONRequestBody
+	request.Params = params
+
+	var body CreateThreeTierAppJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
 		return
@@ -596,18 +612,18 @@ func (sh *strictHandler) CreateStack(w http.ResponseWriter, r *http.Request) {
 	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateStack(ctx, request.(CreateStackRequestObject))
+		return sh.ssi.CreateThreeTierApp(ctx, request.(CreateThreeTierAppRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateStack")
+		handler = middleware(handler, "CreateThreeTierApp")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CreateStackResponseObject); ok {
-		if err := validResponse.VisitCreateStackResponse(w); err != nil {
+	} else if validResponse, ok := response.(CreateThreeTierAppResponseObject); ok {
+		if err := validResponse.VisitCreateThreeTierAppResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -615,25 +631,25 @@ func (sh *strictHandler) CreateStack(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// DeleteStack operation middleware
-func (sh *strictHandler) DeleteStack(w http.ResponseWriter, r *http.Request, stackId string) {
-	var request DeleteStackRequestObject
+// DeleteThreeTierApp operation middleware
+func (sh *strictHandler) DeleteThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string) {
+	var request DeleteThreeTierAppRequestObject
 
-	request.StackId = stackId
+	request.ThreeTierAppId = threeTierAppId
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteStack(ctx, request.(DeleteStackRequestObject))
+		return sh.ssi.DeleteThreeTierApp(ctx, request.(DeleteThreeTierAppRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteStack")
+		handler = middleware(handler, "DeleteThreeTierApp")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DeleteStackResponseObject); ok {
-		if err := validResponse.VisitDeleteStackResponse(w); err != nil {
+	} else if validResponse, ok := response.(DeleteThreeTierAppResponseObject); ok {
+		if err := validResponse.VisitDeleteThreeTierAppResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -641,25 +657,25 @@ func (sh *strictHandler) DeleteStack(w http.ResponseWriter, r *http.Request, sta
 	}
 }
 
-// GetStack operation middleware
-func (sh *strictHandler) GetStack(w http.ResponseWriter, r *http.Request, stackId string) {
-	var request GetStackRequestObject
+// GetThreeTierApp operation middleware
+func (sh *strictHandler) GetThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string) {
+	var request GetThreeTierAppRequestObject
 
-	request.StackId = stackId
+	request.ThreeTierAppId = threeTierAppId
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetStack(ctx, request.(GetStackRequestObject))
+		return sh.ssi.GetThreeTierApp(ctx, request.(GetThreeTierAppRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetStack")
+		handler = middleware(handler, "GetThreeTierApp")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetStackResponseObject); ok {
-		if err := validResponse.VisitGetStackResponse(w); err != nil {
+	} else if validResponse, ok := response.(GetThreeTierAppResponseObject); ok {
+		if err := validResponse.VisitGetThreeTierAppResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
