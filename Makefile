@@ -16,7 +16,7 @@ vet:
 	go vet ./...
 
 test:
-	go test ./...
+	go run github.com/onsi/ginkgo/v2/ginkgo -r --randomize-all --fail-on-pending
 
 tidy:
 	go mod tidy
