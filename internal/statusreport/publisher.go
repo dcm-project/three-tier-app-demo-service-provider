@@ -2,15 +2,17 @@ package statusreport
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"log"
-	"net/http"
+	"log/slog"
 	"sync"
 	"time"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
-	cehttp "github.com/cloudevents/sdk-go/v2/protocol/http"
+	"github.com/google/uuid"
+	"github.com/nats-io/nats.go"
 )
+
+const subject = "dcm.container"
 
 // DCM Container Status values per service-provider-status-reporting enhancement.
 const (
@@ -22,52 +24,67 @@ const (
 	StatusDeleted   = "DELETED"
 )
 
-// ContainerStatus is the payload for status CloudEvents per the enhancement.
-type ContainerStatus struct {
+type cloudEvent struct {
+	SpecVersion     string          `json:"specversion"`
+	ID              string          `json:"id"`
+	Source          string          `json:"source"`
+	Type            string          `json:"type"`
+	Time            string          `json:"time"`
+	DataContentType string          `json:"datacontenttype"`
+	Data            cloudEventData  `json:"data"`
+}
+
+type cloudEventData struct {
+	ID      string `json:"id"`
 	Status  string `json:"status"`
 	Message string `json:"message"`
 }
 
-// Publisher sends status updates to DCM via CloudEvents.
+// Publisher sends status updates to DCM via CloudEvents over NATS.
 type Publisher struct {
-	client       cloudevents.Client
-	targetURL    string
+	conn         *nats.Conn
 	providerName string
-	serviceType  string
-	source       string
 	lastSent     map[string]string
 	mu           sync.RWMutex
+	logger       *slog.Logger
 }
 
-// NewPublisher creates a publisher that POSTs CloudEvents to targetURL.
-// When targetURL is empty, publishing is disabled (Publish is a no-op).
-func NewPublisher(targetURL, providerName string) (*Publisher, error) {
-	if targetURL == "" {
-		return &Publisher{}, nil
-	}
-	c, err := cloudevents.NewClientHTTP()
-	if err != nil {
-		return nil, fmt.Errorf("create http client: %w", err)
+// NewPublisher creates a Publisher that publishes CloudEvents to NATS subject
+// "dcm.container". When natsURL is empty, publishing is disabled (Publish is a no-op).
+func NewPublisher(natsURL, providerName string, logger *slog.Logger) (*Publisher, error) {
+	if natsURL == "" {
+		return &Publisher{logger: logger}, nil
 	}
 	provider := providerName
 	if provider == "" {
 		provider = "three-tier-demo-sp"
 	}
-	source := provider + "-demo"
+	conn, err := nats.Connect(natsURL,
+		nats.MaxReconnects(-1),
+		nats.ReconnectWait(2*time.Second),
+		nats.RetryOnFailedConnect(true),
+		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
+			logger.Error("NATS disconnected", "error", err)
+		}),
+		nats.ReconnectHandler(func(nc *nats.Conn) {
+			logger.Info("NATS reconnected", "url", nc.ConnectedUrl())
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to NATS at %s: %w", natsURL, err)
+	}
 	return &Publisher{
-		client:       c,
-		targetURL:    targetURL,
+		conn:         conn,
 		providerName: provider,
-		serviceType:  "three_tier_app_demo",
-		source:       source,
 		lastSent:     make(map[string]string),
+		logger:       logger,
 	}, nil
 }
 
-// Publish sends a CloudEvent with the given status. Only publishes when status
-// differs from last sent (debounce). Uses DCM-compliant status values.
-func (p *Publisher) Publish(ctx context.Context, instanceID, status, message string) {
-	if p.targetURL == "" {
+// Publish sends a CloudEvent with the given status. Debounces repeated identical
+// statuses for the same instance.
+func (p *Publisher) Publish(_ context.Context, instanceID, status, message string) {
+	if p.conn == nil {
 		return
 	}
 	p.mu.Lock()
@@ -78,62 +95,54 @@ func (p *Publisher) Publish(ctx context.Context, instanceID, status, message str
 	p.lastSent[instanceID] = status
 	p.mu.Unlock()
 
-	eventType := fmt.Sprintf("dcm.providers.%s.%s.instances.%s.status",
-		p.providerName, p.serviceType, instanceID)
-
-	event := cloudevents.NewEvent()
-	event.SetID(fmt.Sprintf("%s-%d", instanceID, time.Now().UnixNano()))
-	event.SetSource(p.source)
-	event.SetType(eventType)
-	event.SetTime(time.Now())
-	if err := event.SetData(cloudevents.ApplicationJSON, ContainerStatus{
-		Status:  status,
-		Message: message,
-	}); err != nil {
-		log.Printf("[status] failed to set event data: %v", err)
+	data, err := p.marshal(instanceID, status, message)
+	if err != nil {
+		p.logger.Error("failed to marshal status event", "instance_id", instanceID, "error", err)
 		return
 	}
-
-	reqCtx := cloudevents.ContextWithTarget(ctx, p.targetURL)
-	result := p.client.Send(reqCtx, event)
-	if cloudevents.IsUndelivered(result) {
-		log.Printf("[status] failed to send event for %s: %v", instanceID, result)
-		return
-	}
-	var res *cehttp.Result
-	if result != nil && cloudevents.ResultAs(result, &res) && res.StatusCode != 0 &&
-		res.StatusCode != http.StatusOK && res.StatusCode != http.StatusAccepted {
-		log.Printf("[status] status report returned %d for %s", res.StatusCode, instanceID)
+	if err := p.conn.Publish(subject, data); err != nil {
+		p.logger.Error("failed to publish status event", "instance_id", instanceID, "error", err)
 	}
 }
 
-// PublishDeleted removes instanceID from lastSent and sends a DELETED event.
+// PublishDeleted removes instanceID from the debounce cache and sends a DELETED event.
 func (p *Publisher) PublishDeleted(ctx context.Context, instanceID string) {
-	if p.targetURL == "" {
+	if p.conn == nil {
 		return
 	}
 	p.mu.Lock()
 	delete(p.lastSent, instanceID)
 	p.mu.Unlock()
 
-	eventType := fmt.Sprintf("dcm.providers.%s.%s.instances.%s.status",
-		p.providerName, p.serviceType, instanceID)
-
-	event := cloudevents.NewEvent()
-	event.SetID(fmt.Sprintf("%s-deleted-%d", instanceID, time.Now().UnixNano()))
-	event.SetSource(p.source)
-	event.SetType(eventType)
-	event.SetTime(time.Now())
-	_ = event.SetData(cloudevents.ApplicationJSON, ContainerStatus{
-		Status:  StatusDeleted,
-		Message: "3-tier app deleted",
-	})
-
-	reqCtx := cloudevents.ContextWithTarget(ctx, p.targetURL)
-	_ = p.client.Send(reqCtx, event)
+	p.Publish(ctx, instanceID, StatusDeleted, "3-tier app deleted")
 }
 
-// ToDCMStatus maps StackStatus to DCM Container Status (PENDING, RUNNING, FAILED, UNKNOWN).
+// Close closes the underlying NATS connection.
+func (p *Publisher) Close() error {
+	if p.conn != nil {
+		p.conn.Close()
+	}
+	return nil
+}
+
+func (p *Publisher) marshal(instanceID, status, message string) ([]byte, error) {
+	ce := cloudEvent{
+		SpecVersion:     "1.0",
+		ID:              uuid.NewString(),
+		Source:          "dcm/providers/" + p.providerName,
+		Type:            "dcm.status.container",
+		Time:            time.Now().UTC().Format(time.RFC3339),
+		DataContentType: "application/json",
+		Data: cloudEventData{
+			ID:      instanceID,
+			Status:  status,
+			Message: message,
+		},
+	}
+	return json.Marshal(ce)
+}
+
+// ToDCMStatus maps a raw status string to a DCM Container Status.
 func ToDCMStatus(s string) string {
 	switch s {
 	case "PENDING":
