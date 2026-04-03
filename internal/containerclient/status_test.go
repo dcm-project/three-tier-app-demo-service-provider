@@ -9,6 +9,7 @@ import (
 
 	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/containerclient"
+	k8sapi "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 )
 
 func TestStatus(t *testing.T) {
@@ -67,6 +68,32 @@ var _ = Describe("WorstStatusFromPodmanStates", func() {
 
 	It("returns FAILED when fewer than 3 states (inspect failed)", func() {
 		s, ok := containerclient.WorstStatusFromPodmanStates([]string{"running", "running"})
+		Expect(ok).To(BeTrue())
+		Expect(s).To(Equal(v1alpha1.FAILED))
+	})
+})
+
+var _ = Describe("AggregateK8sContainerStatuses", func() {
+	It("returns RUNNING when all tiers are RUNNING", func() {
+		s, ok := containerclient.AggregateK8sContainerStatuses([]k8sapi.ContainerStatus{
+			k8sapi.RUNNING, k8sapi.RUNNING, k8sapi.RUNNING,
+		})
+		Expect(ok).To(BeTrue())
+		Expect(s).To(Equal(v1alpha1.RUNNING))
+	})
+
+	It("returns PENDING when any tier is PENDING", func() {
+		s, ok := containerclient.AggregateK8sContainerStatuses([]k8sapi.ContainerStatus{
+			k8sapi.RUNNING, k8sapi.PENDING, k8sapi.RUNNING,
+		})
+		Expect(ok).To(BeTrue())
+		Expect(s).To(Equal(v1alpha1.PENDING))
+	})
+
+	It("returns FAILED when any tier is FAILED", func() {
+		s, ok := containerclient.AggregateK8sContainerStatuses([]k8sapi.ContainerStatus{
+			k8sapi.RUNNING, k8sapi.FAILED, k8sapi.RUNNING,
+		})
 		Expect(ok).To(BeTrue())
 		Expect(s).To(Equal(v1alpha1.FAILED))
 	})

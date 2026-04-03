@@ -2,10 +2,12 @@ package containerclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
+	"github.com/dcm-project/3-tier-demo-service-provider/internal/config"
 	k8sapi "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	k8sclient "github.com/dcm-project/k8s-container-service-provider/pkg/client"
 )
@@ -13,56 +15,134 @@ import (
 // HTTPClient calls the k8s container SP over HTTP. Uses Container IDs
 // stackID-db, stackID-app, stackID-web for idempotent creation.
 type HTTPClient struct {
-	Client *k8sclient.ClientWithResponses
+	Client  *k8sclient.ClientWithResponses
+	StackDB config.StackDBConfig
 }
 
 // NewHTTPClient creates an HTTP client for the given base URL.
-func NewHTTPClient(baseURL string) (*HTTPClient, error) {
+// stackDB supplies DB password, database name, and JDBC users (from config / .env).
+func NewHTTPClient(baseURL string, stackDB config.StackDBConfig) (*HTTPClient, error) {
 	client, err := k8sclient.NewClientWithResponses(baseURL)
 	if err != nil {
 		return nil, err
 	}
-	return &HTTPClient{Client: client}, nil
+	return &HTTPClient{Client: client, StackDB: stackDB}, nil
 }
 
-func tierPorts(net *v1alpha1.TierNetwork, defaultPort int) []k8sapi.ContainerPort {
+// visibility is required by the k8s container SP OpenAPI for each port (internal | external | none).
+func tierPorts(net *v1alpha1.TierNetwork, defaultPort int, visibility k8sapi.ContainerPortVisibility) []k8sapi.ContainerPort {
 	if net != nil && net.Ports != nil && len(*net.Ports) > 0 {
 		out := make([]k8sapi.ContainerPort, len(*net.Ports))
 		for i, p := range *net.Ports {
-			out[i] = k8sapi.ContainerPort{ContainerPort: p.ContainerPort}
+			out[i] = k8sapi.ContainerPort{ContainerPort: p.ContainerPort, Visibility: visibility}
 		}
 		return out
 	}
-	return []k8sapi.ContainerPort{{ContainerPort: defaultPort}}
+	return []k8sapi.ContainerPort{{ContainerPort: defaultPort, Visibility: visibility}}
+}
+
+func (h *HTTPClient) k8sProcessEnvForDatabase(db v1alpha1.DatabaseTierSpec) *k8sapi.ContainerProcess {
+	c := h.StackDB
+	switch db.Engine {
+	case "mysql":
+		env := []k8sapi.ContainerEnvVar{
+			{Name: "MYSQL_ROOT_PASSWORD", Value: c.Password},
+			{Name: "MYSQL_DATABASE", Value: c.DatabaseName},
+		}
+		return &k8sapi.ContainerProcess{Env: &env}
+	default:
+		env := []k8sapi.ContainerEnvVar{
+			{Name: "POSTGRES_PASSWORD", Value: c.Password},
+			{Name: "POSTGRES_DB", Value: c.DatabaseName},
+		}
+		return &k8sapi.ContainerProcess{Env: &env}
+	}
+}
+
+// k8sProcessForWeb configures nginx to proxy to the app Service (stackID-app:8080), matching Podman behavior.
+// Expects an nginx-based image (e.g. nginx:alpine).
+func k8sProcessForWeb(stackID string) *k8sapi.ContainerProcess {
+	appHost := stackID + "-app"
+	script := fmt.Sprintf(`cat > /etc/nginx/conf.d/default.conf <<'EOF'
+server {
+  listen 80;
+  location / {
+    proxy_pass http://%s:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+  }
+}
+EOF
+exec nginx -g 'daemon off;'`, appHost)
+	cmd := []string{"/bin/sh", "-c"}
+	args := []string{script}
+	return &k8sapi.ContainerProcess{Command: &cmd, Args: &args}
+}
+
+// k8sProcessEnvForApp points Spring Pet Clinic at the cluster DNS name for the DB Service
+// (same name as the db container id: stackID-db).
+func (h *HTTPClient) k8sProcessEnvForApp(stackID string, db v1alpha1.DatabaseTierSpec) *k8sapi.ContainerProcess {
+	host := stackID + "-db"
+	c := h.StackDB
+	switch db.Engine {
+	case "mysql":
+		env := []k8sapi.ContainerEnvVar{
+			{Name: "SPRING_DATASOURCE_URL", Value: fmt.Sprintf("jdbc:mysql://%s:3306/%s", host, c.DatabaseName)},
+			{Name: "SPRING_DATASOURCE_USERNAME", Value: c.MysqlUser},
+			{Name: "SPRING_DATASOURCE_PASSWORD", Value: c.Password},
+		}
+		return &k8sapi.ContainerProcess{Env: &env}
+	default:
+		env := []k8sapi.ContainerEnvVar{
+			{Name: "SPRING_DATASOURCE_URL", Value: fmt.Sprintf("jdbc:postgresql://%s:5432/%s", host, c.DatabaseName)},
+			{Name: "SPRING_DATASOURCE_USERNAME", Value: c.PostgresUser},
+			{Name: "SPRING_DATASOURCE_PASSWORD", Value: c.Password},
+		}
+		return &k8sapi.ContainerProcess{Env: &env}
+	}
 }
 
 func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec v1alpha1.ThreeTierSpec) (dbID, appID, webID string, err error) {
+	dbPort := 5432
+	if spec.Database.Engine == "mysql" {
+		dbPort = 3306
+	}
 	tiers := []struct {
-		name   string
-		id     string
-		image  string
-		ports  []k8sapi.ContainerPort
+		name    string
+		id      string
+		image   string
+		ports   []k8sapi.ContainerPort
+		process *k8sapi.ContainerProcess
 	}{
-		{name: "db", id: stackID + "-db", image: dbImageFromSpec(spec.Database), ports: tierPorts(spec.Database.Network, 5432)},
-		{name: "app", id: stackID + "-app", image: spec.App.Image, ports: tierPorts(spec.App.Network, 8080)},
-		{name: "web", id: stackID + "-web", image: spec.Web.Image, ports: tierPorts(spec.Web.Network, 80)},
+		{name: "db", id: stackID + "-db", image: dbImageFromSpec(spec.Database), ports: tierPorts(spec.Database.Network, dbPort, k8sapi.Internal), process: h.k8sProcessEnvForDatabase(spec.Database)},
+		{name: "app", id: stackID + "-app", image: spec.App.Image, ports: tierPorts(spec.App.Network, 8080, k8sapi.Internal), process: h.k8sProcessEnvForApp(stackID, spec.Database)},
+		{name: "web", id: stackID + "-web", image: spec.Web.Image, ports: tierPorts(spec.Web.Network, 80, k8sapi.External), process: k8sProcessForWeb(stackID)},
 	}
 
-	ids := make([]string, 0, 3)
+	ids := make([]string, 0, len(tiers))
 	for _, t := range tiers {
-		body := k8sapi.Container{
-			ServiceType: k8sapi.ContainerServiceTypeContainer,
-			Metadata: k8sapi.ContainerMetadata{Name: t.id},
-			Image:    k8sapi.ContainerImage{Reference: t.image},
+		ports := t.ports
+		cs := k8sapi.ContainerSpec{
+			ServiceType: k8sapi.ContainerSpecServiceTypeContainer,
+			Metadata:    k8sapi.ContainerMetadata{Name: t.id},
+			Image:       k8sapi.ContainerImage{Reference: t.image},
 			Resources: k8sapi.ContainerResources{
 				Cpu:    k8sapi.ContainerCpu{Min: 1, Max: 2},
 				Memory: k8sapi.ContainerMemory{Min: "256MB", Max: "512MB"},
 			},
-			Network: &k8sapi.ContainerNetwork{Ports: t.ports},
+			Network: &k8sapi.ContainerNetwork{Ports: &ports},
+		}
+		if t.process != nil {
+			cs.Process = t.process
+		}
+		body := k8sapi.Container{
+			Spec: cs,
 		}
 		idParam := t.id
 		resp, err := h.Client.CreateContainerWithResponse(ctx, &k8sapi.CreateContainerParams{Id: &idParam}, body)
 		if err != nil {
+			// Roll back containers created so far.
+			_ = deleteContainerIDs(ctx, h.Client, ids)
 			return "", "", "", fmt.Errorf("create %s: %w", t.name, err)
 		}
 		switch resp.StatusCode() {
@@ -73,8 +153,10 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 				ids = append(ids, t.id)
 			}
 		case http.StatusConflict:
+			_ = deleteContainerIDs(ctx, h.Client, ids)
 			return "", "", "", ErrConflict
 		default:
+			_ = deleteContainerIDs(ctx, h.Client, ids)
 			return "", "", "", fmt.Errorf("create %s: unexpected status %d", t.name, resp.StatusCode())
 		}
 	}
@@ -82,25 +164,75 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 }
 
 func (h *HTTPClient) DeleteContainers(ctx context.Context, stackID string) error {
-	ids := []string{stackID + "-db", stackID + "-app", stackID + "-web"}
-	for _, id := range ids {
-		resp, err := h.Client.DeleteContainerWithResponse(ctx, id)
-		if err != nil {
-			return fmt.Errorf("delete %s: %w", id, err)
-		}
-		if resp.StatusCode() == http.StatusNotFound {
-			return ErrNotFound
-		}
-		if resp.StatusCode() != http.StatusNoContent && resp.StatusCode() != http.StatusOK {
-			return fmt.Errorf("delete %s: unexpected status %d", id, resp.StatusCode())
-		}
-	}
-	return nil
+	return deleteContainerIDs(ctx, h.Client, []string{
+		stackID + "-db", stackID + "-app", stackID + "-web",
+	})
 }
 
-// GetStatus cannot determine status from k8s container SP; caller should use stored status.
-func (h *HTTPClient) GetStatus(ctx context.Context, stackID string) (v1alpha1.StackStatus, bool) {
-	return "", false
+// deleteContainerIDs attempts to delete each container in ids, continuing on
+// individual failures and returning all errors joined (ygalblum).
+func deleteContainerIDs(ctx context.Context, client *k8sclient.ClientWithResponses, ids []string) error {
+	var errs []error
+	for _, id := range ids {
+		resp, err := client.DeleteContainerWithResponse(ctx, id)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("delete %s: %w", id, err))
+			continue
+		}
+		switch resp.StatusCode() {
+		case http.StatusNoContent, http.StatusOK, http.StatusNotFound:
+			// not found is acceptable during rollback / concurrent deletes
+		default:
+			errs = append(errs, fmt.Errorf("delete %s: unexpected status %d", id, resp.StatusCode()))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// GetWebEndpoint queries the web container's service info and returns its external URL when
+// the platform has assigned an external IP (e.g. OpenShift LoadBalancer). Returns nil for
+// Kind/bare k8s clusters without a load-balancer controller.
+func (h *HTTPClient) GetWebEndpoint(ctx context.Context, stackID string) *string {
+	webID := stackID + "-web"
+	resp, err := h.Client.GetContainerWithResponse(ctx, webID)
+	if err != nil || resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
+		return nil
+	}
+	svc := resp.JSON200.Service
+	if svc == nil || svc.ExternalIp == nil || *svc.ExternalIp == "" {
+		return nil
+	}
+	port := 80
+	if svc.Ports != nil && len(*svc.Ports) > 0 {
+		port = (*svc.Ports)[0].Port
+	}
+	url := fmt.Sprintf("http://%s:%d", *svc.ExternalIp, port)
+	return &url
+}
+
+// GetStatus queries the k8s container SP (GET /containers/{id}) for each tier and aggregates.
+func (h *HTTPClient) GetStatus(ctx context.Context, stackID string) (v1alpha1.ThreeTierAppStatus, bool) {
+	ids := []string{stackID + "-db", stackID + "-app", stackID + "-web"}
+	statuses := make([]k8sapi.ContainerStatus, 0, 3)
+	for _, id := range ids {
+		resp, err := h.Client.GetContainerWithResponse(ctx, id)
+		if err != nil {
+			return "", false
+		}
+		switch resp.StatusCode() {
+		case http.StatusOK:
+			if resp.JSON200 == nil || resp.JSON200.Status == nil {
+				statuses = append(statuses, k8sapi.PENDING)
+				continue
+			}
+			statuses = append(statuses, *resp.JSON200.Status)
+		case http.StatusNotFound:
+			return v1alpha1.FAILED, true
+		default:
+			return "", false
+		}
+	}
+	return AggregateK8sContainerStatuses(statuses)
 }
 
 // Ensure HTTPClient implements ContainerClient.

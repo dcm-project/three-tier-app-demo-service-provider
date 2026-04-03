@@ -12,7 +12,7 @@ import (
 )
 
 // MockContainerServer returns an httptest.Server that implements the k8s container
-// API (POST /api/v1alpha1/containers, DELETE /api/v1alpha1/containers/{id}).
+// API (POST/GET/DELETE /api/v1alpha1/containers[/{id}]).
 // TEST-ONLY: Used for contract testing in http_test.go. Not used by runtime.
 // Stateful: Create returns 409 for duplicate IDs, Delete returns 404 for non-existent.
 func MockContainerServer() *httptest.Server {
@@ -27,12 +27,15 @@ func MockContainerServer() *httptest.Server {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	})
 	mux.HandleFunc("/api/v1alpha1/containers/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodDelete {
-			id := strings.TrimPrefix(r.URL.Path, "/api/v1alpha1/containers/")
+		id := strings.TrimPrefix(r.URL.Path, "/api/v1alpha1/containers/")
+		switch r.Method {
+		case http.MethodDelete:
 			state.handleDelete(w, id)
-			return
+		case http.MethodGet:
+			state.handleGet(w, id)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	})
 
 	return httptest.NewServer(mux)
@@ -68,18 +71,48 @@ func (s *mockServerState) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	resp := k8sapi.Container{
-		Id:          &id,
-		Path:        ptr("containers/" + id),
-		ServiceType: k8sapi.ContainerServiceTypeContainer,
-		Metadata:    body.Metadata,
-		Image:       body.Image,
-		Resources:   body.Resources,
-		Status:      ptr(k8sapi.RUNNING),
-		CreateTime:  &now,
-		UpdateTime:  &now,
+		Id:         &id,
+		Path:       ptr("containers/" + id),
+		Spec:       body.Spec,
+		Status:     ptr(k8sapi.RUNNING),
+		CreateTime: &now,
+		UpdateTime: &now,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *mockServerState) handleGet(w http.ResponseWriter, id string) {
+	s.mu.RLock()
+	_, exists := s.created[id]
+	s.mu.RUnlock()
+	if !exists {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{"type": "NOT_FOUND", "detail": "container not found"})
+		return
+	}
+	now := time.Now()
+	st := k8sapi.RUNNING
+	resp := k8sapi.Container{
+		Id:     &id,
+		Path:   ptr("containers/" + id),
+		Status: &st,
+		Spec: k8sapi.ContainerSpec{
+			ServiceType: k8sapi.ContainerSpecServiceTypeContainer,
+			Metadata:    k8sapi.ContainerMetadata{Name: id},
+			Image:       k8sapi.ContainerImage{Reference: "mock"},
+			Resources: k8sapi.ContainerResources{
+				Cpu:    k8sapi.ContainerCpu{Min: 1, Max: 2},
+				Memory: k8sapi.ContainerMemory{Min: "256MB", Max: "512MB"},
+			},
+		},
+		CreateTime: &now,
+		UpdateTime: &now,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(resp)
 }
 

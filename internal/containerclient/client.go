@@ -16,6 +16,11 @@ type ContainerClient interface {
 	// The client derives container names/IDs from stackID.
 	DeleteContainers(ctx context.Context, stackID string) error
 	// GetStatus returns the aggregated status (worst among the 3 containers).
-	// ok is false when status cannot be determined (e.g. HTTP backend); caller should use stored status.
-	GetStatus(ctx context.Context, stackID string) (status v1alpha1.StackStatus, ok bool)
+	// Podman and k8s HTTP clients query the runtime or k8s-container SP directly.
+	// ok is false on transport errors (e.g. k8s SP unreachable); caller may retry.
+	GetStatus(ctx context.Context, stackID string) (status v1alpha1.ThreeTierAppStatus, ok bool)
+	// GetWebEndpoint returns the public URL of the web tier when the underlying
+	// platform assigns an external IP (e.g. OpenShift LoadBalancer). Returns nil
+	// when no external IP is available; callers should fall back to port-forward.
+	GetWebEndpoint(ctx context.Context, stackID string) *string
 }

@@ -45,7 +45,7 @@ func (m *MockClient) CreateContainers(ctx context.Context, stackID string, spec 
 }
 
 // GetStatus returns RUNNING for mock (simulated containers are always "running").
-func (m *MockClient) GetStatus(ctx context.Context, stackID string) (v1alpha1.StackStatus, bool) {
+func (m *MockClient) GetStatus(ctx context.Context, stackID string) (v1alpha1.ThreeTierAppStatus, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if m.created == nil {
@@ -56,6 +56,9 @@ func (m *MockClient) GetStatus(ctx context.Context, stackID string) (v1alpha1.St
 	}
 	return v1alpha1.RUNNING, true
 }
+
+// GetWebEndpoint always returns nil for the mock (no external IP in tests).
+func (m *MockClient) GetWebEndpoint(_ context.Context, _ string) *string { return nil }
 
 // DeleteContainers removes the stack from the mock's tracked state. Returns ErrNotFound
 // if the stack was never created, matching k8s container SP 404 behavior.
