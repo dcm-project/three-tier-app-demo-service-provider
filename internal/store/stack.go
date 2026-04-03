@@ -7,47 +7,49 @@ import (
 	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
 )
 
-// StackStore holds 3-tier stacks in memory.
-type StackStore interface {
-	Create(ctx context.Context, stack v1alpha1.Stack) (v1alpha1.Stack, error)
-	Get(ctx context.Context, id string) (v1alpha1.Stack, bool)
-	List(ctx context.Context, maxPageSize, offset int) ([]v1alpha1.Stack, bool)
+// AppStore persists 3-tier app records.
+type AppStore interface {
+	Create(ctx context.Context, app v1alpha1.ThreeTierApp) (v1alpha1.ThreeTierApp, error)
+	Get(ctx context.Context, id string) (v1alpha1.ThreeTierApp, bool)
+	List(ctx context.Context, maxPageSize, offset int) ([]v1alpha1.ThreeTierApp, bool)
+	// Update replaces a stored app record. Returns ErrNotFound when id is missing.
+	Update(ctx context.Context, app v1alpha1.ThreeTierApp) (v1alpha1.ThreeTierApp, error)
 	Delete(ctx context.Context, id string) (bool, error)
 }
 
 type memoryStore struct {
-	mu     sync.RWMutex
-	stacks map[string]v1alpha1.Stack
+	mu   sync.RWMutex
+	apps map[string]v1alpha1.ThreeTierApp
 }
 
-// NewMemoryStore returns an in-memory stack store.
-func NewMemoryStore() StackStore {
-	return &memoryStore{stacks: make(map[string]v1alpha1.Stack)}
+// NewMemoryStore returns an in-memory app store.
+func NewMemoryStore() AppStore {
+	return &memoryStore{apps: make(map[string]v1alpha1.ThreeTierApp)}
 }
 
-func (s *memoryStore) Create(ctx context.Context, stack v1alpha1.Stack) (v1alpha1.Stack, error) {
+func (s *memoryStore) Create(ctx context.Context, app v1alpha1.ThreeTierApp) (v1alpha1.ThreeTierApp, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.stacks[*stack.Id]; ok {
-		return stack, ErrStackExists
+	if _, ok := s.apps[*app.Id]; ok {
+		return app, ErrAlreadyExists
 	}
-	s.stacks[*stack.Id] = stack
-	return stack, nil
+	s.apps[*app.Id] = app
+	return app, nil
 }
 
-func (s *memoryStore) Get(ctx context.Context, id string) (v1alpha1.Stack, bool) {
+func (s *memoryStore) Get(ctx context.Context, id string) (v1alpha1.ThreeTierApp, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	stack, ok := s.stacks[id]
-	return stack, ok
+	app, ok := s.apps[id]
+	return app, ok
 }
 
-func (s *memoryStore) List(ctx context.Context, maxPageSize, offset int) ([]v1alpha1.Stack, bool) {
+func (s *memoryStore) List(ctx context.Context, maxPageSize, offset int) ([]v1alpha1.ThreeTierApp, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var list []v1alpha1.Stack
-	for _, s := range s.stacks {
-		list = append(list, s)
+	var list []v1alpha1.ThreeTierApp
+	for _, a := range s.apps {
+		list = append(list, a)
 	}
 	if offset >= len(list) {
 		return nil, false
@@ -59,12 +61,22 @@ func (s *memoryStore) List(ctx context.Context, maxPageSize, offset int) ([]v1al
 	return list[offset:end], end < len(list)
 }
 
+func (s *memoryStore) Update(_ context.Context, app v1alpha1.ThreeTierApp) (v1alpha1.ThreeTierApp, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.apps[*app.Id]; !ok {
+		return app, ErrNotFound
+	}
+	s.apps[*app.Id] = app
+	return app, nil
+}
+
 func (s *memoryStore) Delete(ctx context.Context, id string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.stacks[id]; !ok {
+	if _, ok := s.apps[id]; !ok {
 		return false, nil
 	}
-	delete(s.stacks, id)
+	delete(s.apps, id)
 	return true, nil
 }
