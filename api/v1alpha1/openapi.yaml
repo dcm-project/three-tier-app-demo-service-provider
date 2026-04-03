@@ -2,7 +2,7 @@ openapi: 3.0.4
 info:
   title: 3-Tier Demo Service Provider API
   description: |
-    DCM service provider for 3-tier (web, app, db) demo stacks.
+    DCM service provider for 3-tier (web, app, db) demo apps.
     AEP-compliant REST API.
   version: 1.0.0
   contact:
@@ -64,7 +64,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StackList'
+                $ref: '#/components/schemas/ThreeTierAppList'
         '400':
           description: Bad request
           content:
@@ -87,7 +87,7 @@ paths:
       parameters:
         - name: id
           in: query
-          description: Optional stack ID for idempotent creation
+          description: Optional app ID for idempotent creation
           schema:
             type: string
             pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
@@ -96,14 +96,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateStackRequest'
+              $ref: '#/components/schemas/ThreeTierApp'
       responses:
         '201':
-          description: Stack created
+          description: Three-tier app created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Stack'
+                $ref: '#/components/schemas/ThreeTierApp'
         '400':
           description: Bad request
           content:
@@ -143,7 +143,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Stack'
+                $ref: '#/components/schemas/ThreeTierApp'
         '404':
           description: Not found
           content:
@@ -216,9 +216,9 @@ components:
           readOnly: true
           example: "health"
 
-    CreateStackRequest:
+    ThreeTierApp:
       type: object
-      description: Request body for creating a 3-tier app
+      description: A 3-tier demo app (web, app, db)
       x-aep-resource:
         type: three-tier-demo-sp.dcm.io/three-tier-app
         singular: three-tier-app
@@ -226,17 +226,26 @@ components:
         patterns:
           - three-tier-apps/{three_tier_app_id}
       required:
-        - spec
         - metadata
+        - spec
       properties:
+        id:
+          type: string
+          readOnly: true
+          pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+          description: Unique app ID (server-generated from metadata.name)
         path:
           type: string
           readOnly: true
           description: Resource path (server-generated)
+        metadata:
+          $ref: '#/components/schemas/ThreeTierAppMetadata'
         spec:
           $ref: '#/components/schemas/ThreeTierSpec'
-        metadata:
-          $ref: '#/components/schemas/StackMetadata'
+        status:
+          readOnly: true
+          allOf:
+            - $ref: '#/components/schemas/ThreeTierAppStatus'
         service_type:
           type: string
           enum: [three_tier_app_demo]
@@ -244,8 +253,23 @@ components:
         provider_hints:
           type: object
           additionalProperties: true
+        web_endpoint:
+          type: string
+          readOnly: true
+          description: |
+            URL to reach the web tier, populated when an external IP is available
+            (e.g. on OpenShift with a LoadBalancer). Nil when the cluster does not
+            assign an external IP (use `kubectl port-forward` instead).
+        create_time:
+          type: string
+          format: date-time
+          readOnly: true
+        update_time:
+          type: string
+          format: date-time
+          readOnly: true
 
-    StackMetadata:
+    ThreeTierAppMetadata:
       type: object
       required:
         - name
@@ -260,6 +284,21 @@ components:
           type: object
           additionalProperties:
             type: string
+
+    ThreeTierAppStatus:
+      type: string
+      enum: [PENDING, RUNNING, FAILED, DELETED]
+      description: Aggregated status of the 3-tier app
+
+    ThreeTierAppList:
+      type: object
+      properties:
+        three_tier_apps:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThreeTierApp'
+        next_page_token:
+          type: string
 
     ThreeTierSpec:
       type: object
@@ -340,56 +379,6 @@ components:
           minimum: 1
           maximum: 65535
           example: 8080
-
-    StackStatus:
-      type: string
-      enum: [PENDING, RUNNING, FAILED, DELETED]
-      description: Aggregated status of the 3-tier stack
-
-    Stack:
-      type: object
-      description: A 3-tier demo app (web, app, db)
-      x-aep-resource:
-        type: three-tier-demo-sp.dcm.io/three-tier-app
-        singular: three-tier-app
-        plural: three-tier-apps
-        patterns:
-          - three-tier-apps/{three_tier_app_id}
-      required:
-        - spec
-        - status
-      properties:
-        id:
-          type: string
-          readOnly: true
-          pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
-          description: Unique stack ID
-        path:
-          type: string
-          readOnly: true
-          description: Resource path
-        spec:
-          $ref: '#/components/schemas/ThreeTierSpec'
-        status:
-          $ref: '#/components/schemas/StackStatus'
-        create_time:
-          type: string
-          format: date-time
-          readOnly: true
-        update_time:
-          type: string
-          format: date-time
-          readOnly: true
-
-    StackList:
-      type: object
-      properties:
-        stacks:
-          type: array
-          items:
-            $ref: '#/components/schemas/Stack'
-        next_page_token:
-          type: string
 
     Error:
       type: object

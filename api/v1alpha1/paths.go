@@ -7,7 +7,7 @@ import (
 )
 
 // PostPath returns the full path for the first POST operation (server base + path).
-// Used for registration endpoint suffix. E.g. "/api/v1alpha1/stacks".
+// Used for registration endpoint suffix. E.g. "/api/v1alpha1/three-tier-apps".
 func PostPath() (string, error) {
 	spec, err := GetSwagger()
 	if err != nil {

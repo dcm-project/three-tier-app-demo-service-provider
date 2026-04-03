@@ -488,7 +488,7 @@ func (r GetHealthResponse) StatusCode() int {
 type ListThreeTierAppsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
-	JSON200                   *StackList
+	JSON200                   *ThreeTierAppList
 	ApplicationproblemJSON400 *Error
 	ApplicationproblemJSON500 *Error
 }
@@ -512,7 +512,7 @@ func (r ListThreeTierAppsResponse) StatusCode() int {
 type CreateThreeTierAppResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
-	JSON201                   *Stack
+	JSON201                   *ThreeTierApp
 	ApplicationproblemJSON400 *Error
 	ApplicationproblemJSON409 *Error
 	ApplicationproblemJSON500 *Error
@@ -560,7 +560,7 @@ func (r DeleteThreeTierAppResponse) StatusCode() int {
 type GetThreeTierAppResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
-	JSON200                   *Stack
+	JSON200                   *ThreeTierApp
 	ApplicationproblemJSON404 *Error
 	ApplicationproblemJSON500 *Error
 }
@@ -675,7 +675,7 @@ func ParseListThreeTierAppsResponse(rsp *http.Response) (*ListThreeTierAppsRespo
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest StackList
+		var dest ThreeTierAppList
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -715,7 +715,7 @@ func ParseCreateThreeTierAppResponse(rsp *http.Response) (*CreateThreeTierAppRes
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest Stack
+		var dest ThreeTierApp
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -795,7 +795,7 @@ func ParseGetThreeTierAppResponse(rsp *http.Response) (*GetThreeTierAppResponse,
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Stack
+		var dest ThreeTierApp
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

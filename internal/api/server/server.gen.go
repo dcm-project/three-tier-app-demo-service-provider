@@ -359,7 +359,7 @@ type ListThreeTierAppsResponseObject interface {
 	VisitListThreeTierAppsResponse(w http.ResponseWriter) error
 }
 
-type ListThreeTierApps200JSONResponse StackList
+type ListThreeTierApps200JSONResponse ThreeTierAppList
 
 func (response ListThreeTierApps200JSONResponse) VisitListThreeTierAppsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
@@ -395,7 +395,7 @@ type CreateThreeTierAppResponseObject interface {
 	VisitCreateThreeTierAppResponse(w http.ResponseWriter) error
 }
 
-type CreateThreeTierApp201JSONResponse Stack
+type CreateThreeTierApp201JSONResponse ThreeTierApp
 
 func (response CreateThreeTierApp201JSONResponse) VisitCreateThreeTierAppResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
@@ -473,7 +473,7 @@ type GetThreeTierAppResponseObject interface {
 	VisitGetThreeTierAppResponse(w http.ResponseWriter) error
 }
 
-type GetThreeTierApp200JSONResponse Stack
+type GetThreeTierApp200JSONResponse ThreeTierApp
 
 func (response GetThreeTierApp200JSONResponse) VisitGetThreeTierAppResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")

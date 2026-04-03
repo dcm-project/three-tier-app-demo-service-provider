@@ -7,17 +7,17 @@ import (
 	"time"
 )
 
-// Defines values for CreateStackRequestServiceType.
+// Defines values for ThreeTierAppServiceType.
 const (
-	ThreeTierAppDemo CreateStackRequestServiceType = "three_tier_app_demo"
+	ThreeTierAppDemo ThreeTierAppServiceType = "three_tier_app_demo"
 )
 
-// Defines values for StackStatus.
+// Defines values for ThreeTierAppStatus.
 const (
-	DELETED StackStatus = "DELETED"
-	FAILED  StackStatus = "FAILED"
-	PENDING StackStatus = "PENDING"
-	RUNNING StackStatus = "RUNNING"
+	DELETED ThreeTierAppStatus = "DELETED"
+	FAILED  ThreeTierAppStatus = "FAILED"
+	PENDING ThreeTierAppStatus = "PENDING"
+	RUNNING ThreeTierAppStatus = "RUNNING"
 )
 
 // AppTierSpec Application tier. Uses OCI image.
@@ -31,24 +31,6 @@ type AppTierSpec struct {
 type ContainerPort struct {
 	ContainerPort int `json:"container_port"`
 }
-
-// CreateStackRequest Request body for creating a 3-tier app
-type CreateStackRequest struct {
-	Metadata StackMetadata `json:"metadata"`
-
-	// Path Resource path (server-generated)
-	Path          *string                 `json:"path,omitempty"`
-	ProviderHints *map[string]interface{} `json:"provider_hints,omitempty"`
-
-	// ServiceType Service type (must be three_tier_app_demo)
-	ServiceType *CreateStackRequestServiceType `json:"service_type,omitempty"`
-
-	// Spec Three-tier structure (database, app, web)
-	Spec ThreeTierSpec `json:"spec"`
-}
-
-// CreateStackRequestServiceType Service type (must be three_tier_app_demo)
-type CreateStackRequestServiceType string
 
 // DatabaseTierSpec Database tier. Uses abstract identifiers (engine, version) only.
 // SP maps engine+version to OCI image (e.g. postgres+16 -> docker.io/library/postgres:16).
@@ -77,38 +59,49 @@ type Health struct {
 	Type  *string `json:"type,omitempty"`
 }
 
-// Stack A 3-tier demo app (web, app, db)
-type Stack struct {
+// ThreeTierApp A 3-tier demo app (web, app, db)
+type ThreeTierApp struct {
 	CreateTime *time.Time `json:"create_time,omitempty"`
 
-	// Id Unique stack ID
-	Id *string `json:"id,omitempty"`
+	// Id Unique app ID (server-generated from metadata.name)
+	Id       *string              `json:"id,omitempty"`
+	Metadata ThreeTierAppMetadata `json:"metadata"`
 
-	// Path Resource path
-	Path *string `json:"path,omitempty"`
+	// Path Resource path (server-generated)
+	Path          *string                 `json:"path,omitempty"`
+	ProviderHints *map[string]interface{} `json:"provider_hints,omitempty"`
+
+	// ServiceType Service type (must be three_tier_app_demo)
+	ServiceType *ThreeTierAppServiceType `json:"service_type,omitempty"`
 
 	// Spec Three-tier structure (database, app, web)
-	Spec ThreeTierSpec `json:"spec"`
+	Spec       ThreeTierSpec       `json:"spec"`
+	Status     *ThreeTierAppStatus `json:"status,omitempty"`
+	UpdateTime *time.Time          `json:"update_time,omitempty"`
 
-	// Status Aggregated status of the 3-tier stack
-	Status     StackStatus `json:"status"`
-	UpdateTime *time.Time  `json:"update_time,omitempty"`
+	// WebEndpoint URL to reach the web tier, populated when an external IP is available
+	// (e.g. on OpenShift with a LoadBalancer). Nil when the cluster does not
+	// assign an external IP (use `kubectl port-forward` instead).
+	WebEndpoint *string `json:"web_endpoint,omitempty"`
 }
 
-// StackList defines model for StackList.
-type StackList struct {
-	NextPageToken *string  `json:"next_page_token,omitempty"`
-	Stacks        *[]Stack `json:"stacks,omitempty"`
+// ThreeTierAppServiceType Service type (must be three_tier_app_demo)
+type ThreeTierAppServiceType string
+
+// ThreeTierAppList defines model for ThreeTierAppList.
+type ThreeTierAppList struct {
+	NextPageToken *string         `json:"next_page_token,omitempty"`
+	ThreeTierApps *[]ThreeTierApp `json:"three_tier_apps,omitempty"`
 }
 
-// StackMetadata defines model for StackMetadata.
-type StackMetadata struct {
+// ThreeTierAppMetadata defines model for ThreeTierAppMetadata.
+type ThreeTierAppMetadata struct {
 	Labels *map[string]string `json:"labels,omitempty"`
 	Name   string             `json:"name"`
 }
 
-// StackStatus Aggregated status of the 3-tier stack
-type StackStatus string
+// ThreeTierAppStatus Aggregated status of the 3-tier app
+type ThreeTierAppStatus string
 
 // ThreeTierSpec Three-tier structure (database, app, web)
 type ThreeTierSpec struct {
@@ -143,9 +136,9 @@ type ListThreeTierAppsParams struct {
 
 // CreateThreeTierAppParams defines parameters for CreateThreeTierApp.
 type CreateThreeTierAppParams struct {
-	// Id Optional stack ID for idempotent creation
+	// Id Optional app ID for idempotent creation
 	Id *string `form:"id,omitempty" json:"id,omitempty"`
 }
 
 // CreateThreeTierAppJSONRequestBody defines body for CreateThreeTierApp for application/json ContentType.
-type CreateThreeTierAppJSONRequestBody = CreateStackRequest
+type CreateThreeTierAppJSONRequestBody = ThreeTierApp
