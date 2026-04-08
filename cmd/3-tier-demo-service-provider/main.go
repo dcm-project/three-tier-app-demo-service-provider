@@ -23,13 +23,13 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	if err := run(logger); err != nil {
+	if err := run(); err != nil {
 		logger.Error("fatal error", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run(_ *slog.Logger) error {
+func run() error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -46,7 +46,7 @@ func run(_ *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	st, err := buildStore(cfg.Store)
+	st, err := store.New(cfg.Store, cfg.SVCLogLevel)
 	if err != nil {
 		return fmt.Errorf("building store: %w", err)
 	}
@@ -103,27 +103,4 @@ func buildLogger(level string) *slog.Logger {
 		lvl = slog.LevelInfo
 	}
 	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
-}
-
-func buildStore(cfg config.StoreConfig) (store.AppStore, error) {
-	switch cfg.Type {
-	case "pgsql", "":
-		dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-			cfg.Host, cfg.Port, cfg.User, cfg.Pass, cfg.Name)
-		s, err := store.NewPostgresStore(dsn)
-		if err != nil {
-			return nil, fmt.Errorf("postgres store: %w", err)
-		}
-		return s, nil
-	case "sqlite":
-		s, err := store.NewSQLiteStore(cfg.Path)
-		if err != nil {
-			return nil, fmt.Errorf("sqlite store at %s: %w", cfg.Path, err)
-		}
-		return s, nil
-	case "memory":
-		return store.NewMemoryStore(), nil
-	default:
-		return nil, fmt.Errorf("unknown DB_TYPE %q (valid: pgsql, sqlite, memory)", cfg.Type)
-	}
 }

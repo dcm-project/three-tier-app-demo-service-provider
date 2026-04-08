@@ -4,9 +4,11 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 
 	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/api/server"
@@ -37,16 +39,23 @@ func (h *Handlers) ListThreeTierApps(ctx context.Context, req server.ListThreeTi
 	if req.Params.MaxPageSize != nil && *req.Params.MaxPageSize >= 1 && *req.Params.MaxPageSize <= 100 {
 		maxPageSize = *req.Params.MaxPageSize
 	}
-	// TODO: decode page_token for cursor-based pagination
-	_ = req.Params.PageToken
 
-	apps, hasMore := h.Svc.List(ctx, int(maxPageSize), 0)
+	offset := 0
+	if req.Params.PageToken != nil && *req.Params.PageToken != "" {
+		if b, err := base64.StdEncoding.DecodeString(*req.Params.PageToken); err == nil {
+			if n, err := strconv.Atoi(string(b)); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+	}
+
+	apps, hasMore := h.Svc.List(ctx, int(maxPageSize), offset)
 	list := make([]v1alpha1.ThreeTierApp, len(apps))
 	copy(list, apps)
 
 	var nextToken *string
 	if hasMore {
-		t := ""
+		t := base64.StdEncoding.EncodeToString([]byte(strconv.Itoa(offset + int(maxPageSize))))
 		nextToken = &t
 	}
 	return server.ListThreeTierApps200JSONResponse(v1alpha1.ThreeTierAppList{
