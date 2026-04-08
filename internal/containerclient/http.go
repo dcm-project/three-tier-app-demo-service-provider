@@ -12,21 +12,18 @@ import (
 	k8sclient "github.com/dcm-project/k8s-container-service-provider/pkg/client"
 )
 
-// HTTPClient calls the k8s container SP over HTTP. Uses Container IDs
-// stackID-db, stackID-app, stackID-web for idempotent creation.
 type HTTPClient struct {
-	Client  *k8sclient.ClientWithResponses
-	StackDB config.StackDBConfig
+	Client     *k8sclient.ClientWithResponses
+	StackDBCfg config.StackDBCfg
 }
 
 // NewHTTPClient creates an HTTP client for the given base URL.
-// stackDB supplies DB password, database name, and JDBC users (from config / .env).
-func NewHTTPClient(baseURL string, stackDB config.StackDBConfig) (*HTTPClient, error) {
+func NewHTTPClient(baseURL string, stackDBCfg config.StackDBCfg) (*HTTPClient, error) {
 	client, err := k8sclient.NewClientWithResponses(baseURL)
 	if err != nil {
 		return nil, err
 	}
-	return &HTTPClient{Client: client, StackDB: stackDB}, nil
+	return &HTTPClient{Client: client, StackDBCfg: stackDBCfg}, nil
 }
 
 func tierPorts(net *v1alpha1.TierNetwork, defaultPort int, visibility k8sapi.ContainerPortVisibility) []k8sapi.ContainerPort {
@@ -40,8 +37,9 @@ func tierPorts(net *v1alpha1.TierNetwork, defaultPort int, visibility k8sapi.Con
 	return []k8sapi.ContainerPort{{ContainerPort: defaultPort, Visibility: visibility}}
 }
 
+
 func (h *HTTPClient) k8sProcessEnvForDatabase(db v1alpha1.DatabaseTierSpec) *k8sapi.ContainerProcess {
-	c := h.StackDB
+	c := h.StackDBCfg
 	switch db.Engine {
 	case "mysql":
 		env := []k8sapi.ContainerEnvVar{
@@ -58,21 +56,21 @@ func (h *HTTPClient) k8sProcessEnvForDatabase(db v1alpha1.DatabaseTierSpec) *k8s
 	}
 }
 
-// k8sProcessForWeb configures nginx to proxy to the app Service (stackID-app:8080), matching Podman behavior.
-// Expects an nginx-based image (e.g. nginx:alpine).
-func k8sProcessForWeb(stackID string) *k8sapi.ContainerProcess {
+// k8sProcessForWeb configures nginx to proxy to the app Service, using the app
+// tier's configured port (defaults to 8080).
+func k8sProcessForWeb(stackID string, appPort int) *k8sapi.ContainerProcess {
 	appHost := stackID + "-app"
 	script := fmt.Sprintf(`cat > /etc/nginx/conf.d/default.conf <<'EOF'
 server {
   listen 80;
   location / {
-    proxy_pass http://%s:8080;
+    proxy_pass http://%s:%d;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
   }
 }
 EOF
-exec nginx -g 'daemon off;'`, appHost)
+exec nginx -g 'daemon off;'`, appHost, appPort)
 	cmd := []string{"/bin/sh", "-c"}
 	args := []string{script}
 	return &k8sapi.ContainerProcess{Command: &cmd, Args: &args}
@@ -82,7 +80,7 @@ exec nginx -g 'daemon off;'`, appHost)
 // (same name as the db container id: stackID-db).
 func (h *HTTPClient) k8sProcessEnvForApp(stackID string, db v1alpha1.DatabaseTierSpec) *k8sapi.ContainerProcess {
 	host := stackID + "-db"
-	c := h.StackDB
+	c := h.StackDBCfg
 	switch db.Engine {
 	case "mysql":
 		env := []k8sapi.ContainerEnvVar{
@@ -101,10 +99,14 @@ func (h *HTTPClient) k8sProcessEnvForApp(stackID string, db v1alpha1.DatabaseTie
 	}
 }
 
-func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec v1alpha1.ThreeTierSpec) (dbID, appID, webID string, err error) {
+func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec v1alpha1.ThreeTierSpec) error {
 	dbPort := 5432
 	if spec.Database.Engine == "mysql" {
 		dbPort = 3306
+	}
+	appPort := 8080
+	if spec.App.HttpPort != nil {
+		appPort = *spec.App.HttpPort
 	}
 	tiers := []struct {
 		name    string
@@ -115,7 +117,7 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 	}{
 		{name: "db", id: stackID + "-db", image: dbImageFromSpec(spec.Database), ports: tierPorts(spec.Database.Network, dbPort, k8sapi.Internal), process: h.k8sProcessEnvForDatabase(spec.Database)},
 		{name: "app", id: stackID + "-app", image: spec.App.Image, ports: tierPorts(spec.App.Network, 8080, k8sapi.Internal), process: h.k8sProcessEnvForApp(stackID, spec.Database)},
-		{name: "web", id: stackID + "-web", image: spec.Web.Image, ports: tierPorts(spec.Web.Network, 80, k8sapi.External), process: k8sProcessForWeb(stackID)},
+		{name: "web", id: stackID + "-web", image: spec.Web.Image, ports: tierPorts(spec.Web.Network, 80, k8sapi.External), process: k8sProcessForWeb(stackID, appPort)},
 	}
 
 	ids := make([]string, 0, len(tiers))
@@ -141,24 +143,20 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 		if err != nil {
 			// Roll back containers created so far.
 			_ = deleteContainerIDs(ctx, h.Client, ids)
-			return "", "", "", fmt.Errorf("create %s: %w", t.name, err)
+			return fmt.Errorf("create %s: %w", t.name, err)
 		}
 		switch resp.StatusCode() {
 		case http.StatusCreated:
-			if resp.JSON201 != nil && resp.JSON201.Id != nil {
-				ids = append(ids, *resp.JSON201.Id)
-			} else {
-				ids = append(ids, t.id)
-			}
+			ids = append(ids, t.id)
 		case http.StatusConflict:
 			_ = deleteContainerIDs(ctx, h.Client, ids)
-			return "", "", "", ErrConflict
+			return ErrConflict
 		default:
 			_ = deleteContainerIDs(ctx, h.Client, ids)
-			return "", "", "", fmt.Errorf("create %s: unexpected status %d", t.name, resp.StatusCode())
+			return fmt.Errorf("create %s: unexpected status %d", t.name, resp.StatusCode())
 		}
 	}
-	return ids[0], ids[1], ids[2], nil
+	return nil
 }
 
 func (h *HTTPClient) DeleteContainers(ctx context.Context, stackID string) error {

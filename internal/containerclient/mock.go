@@ -2,18 +2,10 @@ package containerclient
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
 )
-
-// ErrConflict is returned when CreateContainers is called for a stack that already exists.
-var ErrConflict = errors.New("container already exists")
-
-// ErrNotFound is returned when DeleteContainers is called for a stack that was not created.
-var ErrNotFound = errors.New("container not found")
 
 // MockClient simulates container SP calls aligned with k8s-container-service-provider behavior.
 // Used when CONTAINER_SP_URL is empty. Tracks created stacks; Create returns ErrConflict for
@@ -23,25 +15,19 @@ type MockClient struct {
 	created map[string]struct{}
 }
 
-// CreateContainers returns synthetic container IDs (stackID-db, stackID-app, stackID-web),
-// matching the naming used by PodmanClient and k8s container API. Returns ErrConflict if
-// the stack was already created.
-func (m *MockClient) CreateContainers(ctx context.Context, stackID string, spec v1alpha1.ThreeTierSpec) (dbID, appID, webID string, err error) {
+// CreateContainers tracks the stack and returns ErrConflict for duplicates.
+func (m *MockClient) CreateContainers(ctx context.Context, stackID string, spec v1alpha1.ThreeTierSpec) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.created == nil {
 		m.created = make(map[string]struct{})
 	}
 	if _, exists := m.created[stackID]; exists {
-		return "", "", "", ErrConflict
+		return ErrConflict
 	}
 	m.created[stackID] = struct{}{}
-
-	dbID = fmt.Sprintf("%s-db", stackID)
-	appID = fmt.Sprintf("%s-app", stackID)
-	webID = fmt.Sprintf("%s-web", stackID)
-	_ = spec // unused in mock; k8s SP would use image, resources, etc.
-	return dbID, appID, webID, nil
+	_ = spec
+	return nil
 }
 
 // GetStatus returns RUNNING for mock (simulated containers are always "running").

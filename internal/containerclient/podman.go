@@ -19,7 +19,7 @@ import (
 // WebHostPort, when non-empty (e.g. "8081"), publishes the web tier container to that host
 // port so the nginx proxy is reachable from the host. Leave empty to not publish.
 type PodmanClient struct {
-	StackDB     config.StackDBConfig
+	StackDBCfg  config.StackDBCfg
 	WebHostPort string
 }
 
@@ -43,18 +43,18 @@ func dbImageFromSpec(db v1alpha1.DatabaseTierSpec) string {
 	}
 }
 
-func (p *PodmanClient) CreateContainers(ctx context.Context, stackID string, spec v1alpha1.ThreeTierSpec) (dbID, appID, webID string, err error) {
+func (p *PodmanClient) CreateContainers(ctx context.Context, stackID string, spec v1alpha1.ThreeTierSpec) error {
 	dbName, appName, webName := containerNames(stackID)
 	netName := networkName(stackID)
 	slog.Info("[podman] creating stack", "stack", stackID, "network", netName)
 
-	// --ignore: succeed even if network already exists (ygalblum).
+	// --ignore: succeed even if network already exists.
 	if out, err := exec.CommandContext(ctx, "podman", "network", "create", "--ignore", netName).CombinedOutput(); err != nil {
-		return "", "", "", fmt.Errorf("create network: %w: %s", err, string(out))
+		return fmt.Errorf("create network: %w: %s", err, string(out))
 	}
 
 	// 1. DB container (Postgres or MySQL)
-	c := p.StackDB
+	c := p.StackDBCfg
 	var dbEnv []string
 	switch spec.Database.Engine {
 	case "mysql":
@@ -74,14 +74,14 @@ func (p *PodmanClient) CreateContainers(ctx context.Context, stackID string, spe
 	}
 	args = append(args, dbImageFromSpec(spec.Database))
 	if out, err := exec.CommandContext(ctx, "podman", args...).CombinedOutput(); err != nil {
-		return "", "", "", fmt.Errorf("create db container: %w: %s", err, string(out))
+		return fmt.Errorf("create db container: %w: %s", err, string(out))
 	}
 
 	// Give the DB a moment to initialise.
 	select {
 	case <-ctx.Done():
 		podmanRollback(dbName)
-		return "", "", "", ctx.Err()
+		return ctx.Err()
 	case <-time.After(3 * time.Second):
 	}
 
@@ -108,28 +108,29 @@ func (p *PodmanClient) CreateContainers(ctx context.Context, stackID string, spe
 	args = append(args, spec.App.Image)
 	if out, err := exec.CommandContext(ctx, "podman", args...).CombinedOutput(); err != nil {
 		podmanRollback(dbName)
-		return "", "", "", fmt.Errorf("create app container: %w: %s", err, string(out))
+		return fmt.Errorf("create app container: %w: %s", err, string(out))
 	}
 
-	// 3. Web container (nginx) – proxy to app container.
+	// 3. Web container (nginx) – proxy to app container using configured port.
+	appPort := 8080
+	if spec.App.HttpPort != nil {
+		appPort = *spec.App.HttpPort
+	}
 	nginxConf := fmt.Sprintf(
-		"server { listen 80; location / { proxy_pass http://%s:8080; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; } }\n",
-		appName,
+		"server { listen 80; location / { proxy_pass http://%s:%d; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; } }\n",
+		appName, appPort,
 	)
 	confDir := filepath.Join(os.TempDir(), "3tier-nginx", stackID)
 	if err := os.MkdirAll(confDir, 0755); err != nil {
 		podmanRollback(appName, dbName)
-		return "", "", "", fmt.Errorf("create nginx config dir: %w", err)
+		return fmt.Errorf("create nginx config dir: %w", err)
 	}
 	confPath := filepath.Join(confDir, "default.conf")
 	if err := os.WriteFile(confPath, []byte(nginxConf), 0644); err != nil {
 		podmanRollback(appName, dbName)
-		return "", "", "", fmt.Errorf("write nginx config: %w", err)
+		return fmt.Errorf("write nginx config: %w", err)
 	}
 
-	// Build podman run args; publish host port only when WebHostPort is set.
-	// Avoid hardcoding 9080 which conflicts with the api-gateway workspace
-	// service (ygalblum). Default: no host publish.
 	args = []string{"run", "-d", "--name", webName, "--network", netName}
 	if p.WebHostPort != "" {
 		args = append(args, "-p", p.WebHostPort+":80")
@@ -137,11 +138,11 @@ func (p *PodmanClient) CreateContainers(ctx context.Context, stackID string, spe
 	args = append(args, "-v", confPath+":/etc/nginx/conf.d/default.conf:ro,z", spec.Web.Image)
 	if out, err := exec.CommandContext(ctx, "podman", args...).CombinedOutput(); err != nil {
 		podmanRollback(appName, dbName)
-		return "", "", "", fmt.Errorf("create web container: %w: %s", err, string(out))
+		return fmt.Errorf("create web container: %w: %s", err, string(out))
 	}
 
 	slog.Info("[podman] created containers", "db", dbName, "app", appName, "web", webName)
-	return dbName, appName, webName, nil
+	return nil
 }
 
 // GetWebEndpoint returns http://localhost:{WebHostPort} when a host port is configured,

@@ -345,6 +345,14 @@ components:
           type: string
           description: OCI image reference for the application.
           example: docker.io/springcommunity/spring-framework-petclinic:6.1.2
+        http_port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: |
+            Primary HTTP port the application listens on.
+            Used by the web tier proxy to forward traffic. Defaults to 8080.
+          example: 8080
         network:
           $ref: '#/components/schemas/TierNetwork'
 
