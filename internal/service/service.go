@@ -42,9 +42,8 @@ func New(st store.AppStore, cc containerclient.ContainerClient, sr StatusReporte
 	return &ThreeTierAppService{store: st, container: cc, status: sr}
 }
 
-// Create provisions a new 3-tier app with the given id and spec.
-// It persists a PENDING record first so a crash mid-provision leaves a
-// reconcilable record, then provisions containers and updates to RUNNING.
+// Create stores a PENDING record and returns immediately. Provisioning runs in
+// the background; status is updated to RUNNING (or FAILED) when provisioning completes.
 // Returns ErrConflict when id already exists.
 func (s *ThreeTierAppService) Create(ctx context.Context, id string, spec v1alpha1.ThreeTierSpec) (v1alpha1.ThreeTierApp, error) {
 	if _, ok := s.store.Get(ctx, id); ok {
@@ -71,36 +70,41 @@ func (s *ThreeTierAppService) Create(ctx context.Context, id string, spec v1alph
 		return v1alpha1.ThreeTierApp{}, fmt.Errorf("store create: %w", err)
 	}
 
-	// ErrConflict from the container SP means containers already exist (e.g.
-	// SP restarted and cleared its store). Continue waiting rather than rolling
-	// back — the containers are still alive.
-	if _, _, _, err := s.container.CreateContainers(ctx, id, spec); err != nil &&
-		!errors.Is(err, containerclient.ErrConflict) {
-		_, _ = s.store.Delete(ctx, id)
-		return v1alpha1.ThreeTierApp{}, fmt.Errorf("provision: %w", err)
+	go s.provision(context.Background(), id, spec, created)
+	return created, nil
+}
+
+// provision runs in the background after Create returns. It provisions the
+// containers and updates the stored record to RUNNING or FAILED.
+func (s *ThreeTierAppService) provision(ctx context.Context, id string, spec v1alpha1.ThreeTierSpec, app v1alpha1.ThreeTierApp) {
+	if err := s.container.CreateContainers(ctx, id, spec); err != nil {
+		failed := v1alpha1.FAILED
+		app.Status = &failed
+		now := time.Now()
+		app.UpdateTime = &now
+		_, _ = s.store.Update(ctx, app)
+		return
 	}
 
 	waitCtx, cancel := context.WithTimeout(ctx, provisionTimeout)
 	defer cancel()
 	if err := s.waitForRunning(waitCtx, id); err != nil {
 		_ = s.container.DeleteContainers(context.Background(), id)
-		_, _ = s.store.Delete(ctx, id)
-		return v1alpha1.ThreeTierApp{}, fmt.Errorf("wait: %w", err)
+		_ = s.store.Delete(context.Background(), id)
+		return
 	}
 
 	running := v1alpha1.RUNNING
-	updateTime := time.Now()
-	created.Status = &running
-	created.UpdateTime = &updateTime
-	created.WebEndpoint = s.container.GetWebEndpoint(ctx, id)
-	if updated, err := s.store.Update(ctx, created); err == nil {
-		created = updated
+	now := time.Now()
+	app.Status = &running
+	app.UpdateTime = &now
+	app.WebEndpoint = s.container.GetWebEndpoint(ctx, id)
+	if updated, err := s.store.Update(ctx, app); err == nil {
+		app = updated
 	}
-
 	if s.status != nil {
 		s.status.Publish(ctx, id, statusreport.StatusRunning, statusMessage(statusreport.StatusRunning))
 	}
-	return created, nil
 }
 
 // Get returns the stored app with its live container status refreshed.
@@ -112,10 +116,6 @@ func (s *ThreeTierAppService) Get(ctx context.Context, id string) (v1alpha1.Thre
 	}
 	if st, ok := s.container.GetStatus(ctx, id); ok {
 		app.Status = &st
-		if s.status != nil {
-			dcm := statusreport.ToDCMStatus(string(st))
-			s.status.Publish(ctx, id, dcm, statusMessage(dcm))
-		}
 	}
 	return app, nil
 }
@@ -136,6 +136,7 @@ func (s *ThreeTierAppService) List(ctx context.Context, maxPageSize, offset int)
 
 // Delete removes the 3-tier app and its containers.
 // Returns ErrNotFound when the app does not exist.
+// TODO: publish DELETED status once background monitoring is implemented.
 func (s *ThreeTierAppService) Delete(ctx context.Context, id string) error {
 	if _, ok := s.store.Get(ctx, id); !ok {
 		return ErrNotFound
@@ -143,11 +144,8 @@ func (s *ThreeTierAppService) Delete(ctx context.Context, id string) error {
 	if err := s.container.DeleteContainers(ctx, id); err != nil {
 		return fmt.Errorf("delete containers: %w", err)
 	}
-	if _, err := s.store.Delete(ctx, id); err != nil {
+	if err := s.store.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete record: %w", err)
-	}
-	if s.status != nil {
-		s.status.PublishDeleted(ctx, id)
 	}
 	return nil
 }
