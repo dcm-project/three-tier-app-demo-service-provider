@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	glsqlite "github.com/glebarez/sqlite"
 	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/config"
 	pgdriver "gorm.io/driver/postgres"
@@ -19,13 +18,13 @@ import (
 
 // ThreeTierAppRecord is the gorm model for persisting a ThreeTierApp.
 type ThreeTierAppRecord struct {
-	ID          string                `gorm:"column:id;primaryKey"`
-	Path        string                `gorm:"column:path;not null"`
-	Status      string                `gorm:"column:status;not null"`
+	ID          string                 `gorm:"column:id;primaryKey"`
+	Path        string                 `gorm:"column:path;not null"`
+	Status      string                 `gorm:"column:status;not null"`
 	Spec        v1alpha1.ThreeTierSpec `gorm:"column:spec_json;serializer:json;not null"`
-	WebEndpoint string                `gorm:"column:web_endpoint;not null;default:''"`
-	CreateTime  time.Time             `gorm:"column:create_time;not null"`
-	UpdateTime  time.Time             `gorm:"column:update_time;not null"`
+	WebEndpoint string                 `gorm:"column:web_endpoint;not null;default:''"`
+	CreateTime  time.Time              `gorm:"column:create_time;autoCreateTime"`
+	UpdateTime  time.Time              `gorm:"column:update_time;autoUpdateTime"`
 }
 
 // TableName overrides the default gorm table name.
@@ -137,10 +136,10 @@ func (s *gormStore) Update(ctx context.Context, app v1alpha1.ThreeTierApp) (v1al
 	result := s.db.WithContext(ctx).
 		Model(&ThreeTierAppRecord{}).
 		Where("id = ?", *app.Id).
-		Updates(map[string]any{
-			"status":       status,
-			"web_endpoint": webEndpoint,
-			"update_time":  app.UpdateTime.UTC(),
+		Select("status", "web_endpoint").
+		Updates(&ThreeTierAppRecord{
+			Status:      status,
+			WebEndpoint: webEndpoint,
 		})
 	if result.Error != nil {
 		return app, fmt.Errorf("update: %w", result.Error)
@@ -148,7 +147,11 @@ func (s *gormStore) Update(ctx context.Context, app v1alpha1.ThreeTierApp) (v1al
 	if result.RowsAffected == 0 {
 		return app, ErrNotFound
 	}
-	return app, nil
+	var rec ThreeTierAppRecord
+	if err := s.db.WithContext(ctx).First(&rec, "id = ?", *app.Id).Error; err != nil {
+		return app, fmt.Errorf("reload after update: %w", err)
+	}
+	return fromRecord(rec), nil
 }
 
 func (s *gormStore) Delete(ctx context.Context, id string) error {
@@ -173,8 +176,6 @@ func toRecord(app v1alpha1.ThreeTierApp) ThreeTierAppRecord {
 		Status:      status,
 		Spec:        app.Spec,
 		WebEndpoint: webEndpoint,
-		CreateTime:  app.CreateTime.UTC(),
-		UpdateTime:  app.UpdateTime.UTC(),
 	}
 }
 

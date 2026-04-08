@@ -37,7 +37,6 @@ func tierPorts(net *v1alpha1.TierNetwork, defaultPort int, visibility k8sapi.Con
 	return []k8sapi.ContainerPort{{ContainerPort: defaultPort, Visibility: visibility}}
 }
 
-
 func (h *HTTPClient) k8sProcessEnvForDatabase(db v1alpha1.DatabaseTierSpec) *k8sapi.ContainerProcess {
 	c := h.StackDBCfg
 	switch db.Engine {
@@ -108,16 +107,39 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 	if spec.App.HttpPort != nil {
 		appPort = *spec.App.HttpPort
 	}
+	// Fixed sizing (not user-configurable): Pet Clinic JVM + DB need headroom; nginx stays small.
 	tiers := []struct {
 		name    string
 		id      string
 		image   string
 		ports   []k8sapi.ContainerPort
 		process *k8sapi.ContainerProcess
+		res     k8sapi.ContainerResources
 	}{
-		{name: "db", id: stackID + "-db", image: dbImageFromSpec(spec.Database), ports: tierPorts(spec.Database.Network, dbPort, k8sapi.Internal), process: h.k8sProcessEnvForDatabase(spec.Database)},
-		{name: "app", id: stackID + "-app", image: spec.App.Image, ports: tierPorts(spec.App.Network, 8080, k8sapi.Internal), process: h.k8sProcessEnvForApp(stackID, spec.Database)},
-		{name: "web", id: stackID + "-web", image: spec.Web.Image, ports: tierPorts(spec.Web.Network, 80, k8sapi.External), process: k8sProcessForWeb(stackID, appPort)},
+		{
+			name: "db", id: stackID + "-db", image: dbImageFromSpec(spec.Database),
+			ports: tierPorts(spec.Database.Network, dbPort, k8sapi.Internal), process: h.k8sProcessEnvForDatabase(spec.Database),
+			res: k8sapi.ContainerResources{
+				Cpu:    k8sapi.ContainerCpu{Min: 2, Max: 4},
+				Memory: k8sapi.ContainerMemory{Min: "1GB", Max: "2GB"},
+			},
+		},
+		{
+			name: "app", id: stackID + "-app", image: spec.App.Image,
+			ports: tierPorts(spec.App.Network, 8080, k8sapi.Internal), process: h.k8sProcessEnvForApp(stackID, spec.Database),
+			res: k8sapi.ContainerResources{
+				Cpu:    k8sapi.ContainerCpu{Min: 2, Max: 8},
+				Memory: k8sapi.ContainerMemory{Min: "2GB", Max: "4GB"},
+			},
+		},
+		{
+			name: "web", id: stackID + "-web", image: spec.Web.Image,
+			ports: tierPorts(spec.Web.Network, 80, k8sapi.External), process: k8sProcessForWeb(stackID, appPort),
+			res: k8sapi.ContainerResources{
+				Cpu:    k8sapi.ContainerCpu{Min: 1, Max: 4},
+				Memory: k8sapi.ContainerMemory{Min: "512MB", Max: "1GB"},
+			},
+		},
 	}
 
 	ids := make([]string, 0, len(tiers))
@@ -128,11 +150,8 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 				ServiceType: k8sapi.ContainerSpecServiceTypeContainer,
 				Metadata:    k8sapi.ContainerMetadata{Name: t.id},
 				Image:       k8sapi.ContainerImage{Reference: t.image},
-				Resources: k8sapi.ContainerResources{
-					Cpu:    k8sapi.ContainerCpu{Min: 1, Max: 2},
-					Memory: k8sapi.ContainerMemory{Min: "256MB", Max: "512MB"},
-				},
-				Network: &k8sapi.ContainerNetwork{Ports: &ports},
+				Resources:   t.res,
+				Network:     &k8sapi.ContainerNetwork{Ports: &ports},
 			},
 		}
 		if t.process != nil {

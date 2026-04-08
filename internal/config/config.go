@@ -11,19 +11,19 @@ import (
 
 // Config holds all service configuration.
 type Config struct {
-	SVCAddress          string         `env:"SVC_ADDRESS"          envDefault:":8080"`
-	SVCLogLevel         string         `env:"SVC_LOG_LEVEL"        envDefault:"info"`
-	ContainerSPURL      string         `env:"CONTAINER_SP_URL"`
-	DevContainerBackend string         `env:"DEV_CONTAINER_BACKEND"`
+	SVCAddress          string `env:"SVC_ADDRESS"          envDefault:":8080"`
+	SVCLogLevel         string `env:"SVC_LOG_LEVEL"        envDefault:"info"`
+	ContainerSPURL      string `env:"CONTAINER_SP_URL"`
+	DevContainerBackend string `env:"DEV_CONTAINER_BACKEND"`
 	// PodmanWebHostPort publishes the nginx web container to this host port
 	// when using the Podman backend (e.g. "8081"). Empty = no host publish,
 	// avoiding conflicts with other services (ygalblum).
-	PodmanWebHostPort   string         `env:"PODMAN_WEB_HOST_PORT"`
-	StackDB             StackDBCfg     `envPrefix:"TIER_STACK_"`
-	DCM                 DCMConfig      `envPrefix:"SP_DCM_"`
-	NATS                NATSConfig     `envPrefix:"SP_NATS_"`
-	Provider            ProviderConfig `envPrefix:"SP_PROVIDER_"`
-	Store               StoreConfig    `envPrefix:"DB_"`
+	PodmanWebHostPort string         `env:"PODMAN_WEB_HOST_PORT"`
+	StackDB           StackDBCfg     `envPrefix:"TIER_STACK_"`
+	DCM               DCMConfig      `envPrefix:"SP_DCM_"`
+	NATS              NATSConfig     `envPrefix:"SP_NATS_"`
+	Provider          ProviderConfig `envPrefix:"SP_PROVIDER_"`
+	Store             StoreConfig    `envPrefix:"DB_"`
 }
 
 // StackDBCfg holds credentials for the provisioned DB/app tiers.

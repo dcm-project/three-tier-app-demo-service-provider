@@ -25,13 +25,13 @@ const (
 )
 
 type cloudEvent struct {
-	SpecVersion     string          `json:"specversion"`
-	ID              string          `json:"id"`
-	Source          string          `json:"source"`
-	Type            string          `json:"type"`
-	Time            string          `json:"time"`
-	DataContentType string          `json:"datacontenttype"`
-	Data            cloudEventData  `json:"data"`
+	SpecVersion     string         `json:"specversion"`
+	ID              string         `json:"id"`
+	Source          string         `json:"source"`
+	Type            string         `json:"type"`
+	Time            string         `json:"time"`
+	DataContentType string         `json:"datacontenttype"`
+	Data            cloudEventData `json:"data"`
 }
 
 type cloudEventData struct {

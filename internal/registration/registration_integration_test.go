@@ -89,7 +89,7 @@ var _ = Describe("Registration Integration", func() {
 
 		Eventually(func() bool {
 			return requestReceived.Load()
-		}).WithTimeout(3 * time.Second).WithPolling(100 * time.Millisecond).Should(BeTrue(),
+		}).WithTimeout(3*time.Second).WithPolling(100*time.Millisecond).Should(BeTrue(),
 			"expected POST to /providers but no request was received")
 	})
 
@@ -131,7 +131,7 @@ var _ = Describe("Registration Integration", func() {
 
 		Eventually(func() bool {
 			return requestReceived.Load()
-		}).WithTimeout(3 * time.Second).WithPolling(100 * time.Millisecond).Should(BeTrue(),
+		}).WithTimeout(3*time.Second).WithPolling(100*time.Millisecond).Should(BeTrue(),
 			"expected registration request but none was received")
 
 		Expect(receivedPayload.Name).To(Equal("3tier-sp"))
@@ -189,7 +189,7 @@ var _ = Describe("Registration Integration", func() {
 
 		Eventually(func() int32 {
 			return requestCount.Load()
-		}).WithTimeout(5 * time.Second).WithPolling(50 * time.Millisecond).Should(BeNumerically(">=", int32(4)),
+		}).WithTimeout(5*time.Second).WithPolling(50*time.Millisecond).Should(BeNumerically(">=", int32(4)),
 			"expected at least 4 registration attempts")
 
 		mu.Lock()
@@ -231,7 +231,7 @@ var _ = Describe("Registration Integration", func() {
 
 		Eventually(func() string {
 			return logBuf.String()
-		}).WithTimeout(3 * time.Second).WithPolling(100 * time.Millisecond).Should(
+		}).WithTimeout(3*time.Second).WithPolling(100*time.Millisecond).Should(
 			And(
 				ContainSubstring("registration"),
 				ContainSubstring("\"level\":\"WARN\""),
@@ -266,7 +266,7 @@ var _ = Describe("Registration Integration", func() {
 
 		registrar.Start(ctx)
 
-		Eventually(registrar.Done()).WithTimeout(3 * time.Second).Should(BeClosed(),
+		Eventually(registrar.Done()).WithTimeout(3*time.Second).Should(BeClosed(),
 			"Done() channel should close after successful registration")
 	})
 })

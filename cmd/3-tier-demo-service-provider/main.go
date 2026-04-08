@@ -14,6 +14,7 @@ import (
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/config"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/containerclient"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/handlers"
+	"github.com/dcm-project/3-tier-demo-service-provider/internal/monitoring"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/registration"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/service"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/statusreport"
@@ -67,7 +68,8 @@ func run() error {
 		logger.Info("status reporting enabled", "nats_url", cfg.NATS.URL)
 	}
 
-	svc := service.New(st, containerClient, statusReporter)
+	mon := monitoring.New(st, containerClient, statusReporter, 0, logger)
+	svc := service.New(st, containerClient, statusReporter).WithMonitor(mon)
 	h := &handlers.Handlers{Svc: svc}
 
 	r := chi.NewRouter()
@@ -78,16 +80,19 @@ func run() error {
 		return fmt.Errorf("creating server: %w", err)
 	}
 
-	if cfg.RegistrationEnabled() {
-		registrar, err := registration.NewRegistrar(&cfg, logger)
-		if err != nil {
-			return fmt.Errorf("creating registrar: %w", err)
+	srv = srv.WithOnReady(func(ctx context.Context) {
+		if cfg.RegistrationEnabled() {
+			registrar, err := registration.NewRegistrar(&cfg, logger)
+			if err != nil {
+				logger.Error("creating registrar", "error", err)
+			} else {
+				registrar.Start(ctx)
+				logger.Info("DCM registration started")
+			}
 		}
-		srv = srv.WithOnReady(func(ctx context.Context) {
-			registrar.Start(ctx)
-			logger.Info("DCM registration started")
-		})
-	}
+		go mon.Start(ctx)
+		logger.Info("status monitor started")
+	})
 
 	logger.Info("server ready", "address", ln.Addr().String())
 	return srv.Run(ctx, ln)

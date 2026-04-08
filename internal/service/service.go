@@ -30,16 +30,30 @@ const (
 	pollInterval     = 3 * time.Second
 )
 
+// DeletionNotifier is notified after an app is successfully deleted so that
+// the monitoring goroutine can publish the DELETED status event.
+type DeletionNotifier interface {
+	NotifyDeleted(instanceID string)
+}
+
 // ThreeTierAppService encapsulates 3-tier provisioning and persistence logic.
 type ThreeTierAppService struct {
 	store     store.AppStore
 	container containerclient.ContainerClient
 	status    StatusReporter
+	monitor   DeletionNotifier
 }
 
 // New creates a ThreeTierAppService backed by the given dependencies.
 func New(st store.AppStore, cc containerclient.ContainerClient, sr StatusReporter) *ThreeTierAppService {
 	return &ThreeTierAppService{store: st, container: cc, status: sr}
+}
+
+// WithMonitor attaches a DeletionNotifier that will be called after each
+// successful deletion so the monitoring goroutine can publish the DELETED event.
+func (s *ThreeTierAppService) WithMonitor(m DeletionNotifier) *ThreeTierAppService {
+	s.monitor = m
+	return s
 }
 
 // Create stores a PENDING record and returns immediately. Provisioning runs in
@@ -50,16 +64,13 @@ func (s *ThreeTierAppService) Create(ctx context.Context, id string, spec v1alph
 		return v1alpha1.ThreeTierApp{}, ErrConflict
 	}
 
-	now := time.Now()
 	pending := v1alpha1.PENDING
 	path := "three-tier-apps/" + id
 	app := v1alpha1.ThreeTierApp{
-		Id:         &id,
-		Path:       &path,
-		Spec:       spec,
-		Status:     &pending,
-		CreateTime: &now,
-		UpdateTime: &now,
+		Id:     &id,
+		Path:   &path,
+		Spec:   spec,
+		Status: &pending,
 	}
 
 	created, err := s.store.Create(ctx, app)
@@ -80,8 +91,6 @@ func (s *ThreeTierAppService) provision(ctx context.Context, id string, spec v1a
 	if err := s.container.CreateContainers(ctx, id, spec); err != nil {
 		failed := v1alpha1.FAILED
 		app.Status = &failed
-		now := time.Now()
-		app.UpdateTime = &now
 		_, _ = s.store.Update(ctx, app)
 		return
 	}
@@ -95,13 +104,16 @@ func (s *ThreeTierAppService) provision(ctx context.Context, id string, spec v1a
 	}
 
 	running := v1alpha1.RUNNING
-	now := time.Now()
 	app.Status = &running
-	app.UpdateTime = &now
 	app.WebEndpoint = s.container.GetWebEndpoint(ctx, id)
 	if updated, err := s.store.Update(ctx, app); err == nil {
 		app = updated
 	}
+	// Notify NATS as soon as the row is RUNNING (subscribers should not wait for the
+	// monitor’s poll interval). While provisioning, the DB still says PENDING but
+	// containers may already be RUNNING; the monitor’s reconcile would see that drift
+	// and could publish RUNNING too—so it deliberately ignores PENDING vs live RUNNING,
+	// and we publish that transition exactly here instead.
 	if s.status != nil {
 		s.status.Publish(ctx, id, statusreport.StatusRunning, statusMessage(statusreport.StatusRunning))
 	}
@@ -136,7 +148,8 @@ func (s *ThreeTierAppService) List(ctx context.Context, maxPageSize, offset int)
 
 // Delete removes the 3-tier app and its containers.
 // Returns ErrNotFound when the app does not exist.
-// TODO: publish DELETED status once background monitoring is implemented.
+// After successful deletion the monitoring goroutine is notified to publish the
+// DELETED status event.
 func (s *ThreeTierAppService) Delete(ctx context.Context, id string) error {
 	if _, ok := s.store.Get(ctx, id); !ok {
 		return ErrNotFound
@@ -146,6 +159,9 @@ func (s *ThreeTierAppService) Delete(ctx context.Context, id string) error {
 	}
 	if err := s.store.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete record: %w", err)
+	}
+	if s.monitor != nil {
+		s.monitor.NotifyDeleted(id)
 	}
 	return nil
 }

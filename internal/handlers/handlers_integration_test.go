@@ -23,7 +23,6 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-
 // statusOverrideClient wraps MockClient and overrides GetStatus for testing status changes.
 type statusOverrideClient struct {
 	inner    *containerclient.MockClient
@@ -64,9 +63,9 @@ func (c *statusOverrideClient) setStatus(stackID string, status v1alpha1.ThreeTi
 
 // mockStatusReporter records Publish and PublishDeleted calls for assertions.
 type mockStatusReporter struct {
-	mu       sync.Mutex
-	publish  []publishCall
-	deleted  []string
+	mu      sync.Mutex
+	publish []publishCall
+	deleted []string
 }
 
 type publishCall struct {
@@ -122,7 +121,7 @@ func TestHandlers(t *testing.T) {
 
 var _ = Describe("Handlers with MockClient and status reporting", func() {
 	var (
-		srv     *httptest.Server
+		srv      *httptest.Server
 		reporter *mockStatusReporter
 	)
 
@@ -180,7 +179,7 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 		Expect(stack.Status).To(HaveValue(Equal(v1alpha1.PENDING)))
 
 		// Provisioning goroutine publishes RUNNING asynchronously.
-		Eventually(reporter.getPublishCalls, "2s", "10ms").Should(ContainElement(
+		Eventually(reporter.getPublishCalls, "15s", "25ms").Should(ContainElement(
 			WithTransform(func(c publishCall) string { return c.Status }, Equal("RUNNING")),
 		))
 	})
@@ -195,21 +194,27 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 			},
 		}
 		body, _ := json.Marshal(req)
-		_, err := http.Post(srv.URL+"/api/v1alpha1/three-tier-apps", "application/json", bytes.NewReader(body))
+		postResp, err := http.Post(srv.URL+"/api/v1alpha1/three-tier-apps", "application/json", bytes.NewReader(body))
 		Expect(err).NotTo(HaveOccurred())
+		Expect(postResp.StatusCode).To(Equal(http.StatusCreated))
+		_ = postResp.Body.Close()
 
 		// Wait for provisioning goroutine to register containers (makes GetStatus return RUNNING).
 		Eventually(func() v1alpha1.ThreeTierAppStatus {
 			resp, err := http.Get(srv.URL + "/api/v1alpha1/three-tier-apps/get-status-stack")
 			if err != nil || resp.StatusCode != http.StatusOK {
+				if resp != nil {
+					_ = resp.Body.Close()
+				}
 				return v1alpha1.PENDING
 			}
+			defer resp.Body.Close()
 			var stack v1alpha1.ThreeTierApp
 			if err := json.NewDecoder(resp.Body).Decode(&stack); err != nil || stack.Status == nil {
 				return v1alpha1.PENDING
 			}
 			return *stack.Status
-		}, "2s", "10ms").Should(Equal(v1alpha1.RUNNING))
+		}, "15s", "25ms").Should(Equal(v1alpha1.RUNNING))
 	})
 
 	It("deletes a 3-tier app (no status event published)", func() {
@@ -222,14 +227,21 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 			},
 		}
 		body, _ := json.Marshal(req)
-		_, err := http.Post(srv.URL+"/api/v1alpha1/three-tier-apps", "application/json", bytes.NewReader(body))
+		postResp, err := http.Post(srv.URL+"/api/v1alpha1/three-tier-apps", "application/json", bytes.NewReader(body))
 		Expect(err).NotTo(HaveOccurred())
+		Expect(postResp.StatusCode).To(Equal(http.StatusCreated))
+		_ = postResp.Body.Close()
 
 		// Wait for provisioning so the entry exists in the store before deleting.
 		Eventually(func() int {
-			resp, _ := http.Get(srv.URL + "/api/v1alpha1/three-tier-apps/del-stack")
-			return resp.StatusCode
-		}, "2s", "10ms").Should(Equal(http.StatusOK))
+			resp, err := http.Get(srv.URL + "/api/v1alpha1/three-tier-apps/del-stack")
+			if err != nil || resp == nil {
+				return 0
+			}
+			code := resp.StatusCode
+			_ = resp.Body.Close()
+			return code
+		}, "15s", "25ms").Should(Equal(http.StatusOK))
 
 		delReq, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/v1alpha1/three-tier-apps/del-stack", nil)
 		resp, err := http.DefaultClient.Do(delReq)
@@ -249,23 +261,30 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 			},
 		}
 		body, _ := json.Marshal(req)
-		_, err := http.Post(srv.URL+"/api/v1alpha1/three-tier-apps", "application/json", bytes.NewReader(body))
+		postResp, err := http.Post(srv.URL+"/api/v1alpha1/three-tier-apps", "application/json", bytes.NewReader(body))
 		Expect(err).NotTo(HaveOccurred())
+		Expect(postResp.StatusCode).To(Equal(http.StatusCreated))
+		_ = postResp.Body.Close()
 
-		// Wait for provisioning goroutine so GetStatus returns RUNNING.
+		// Wait for provisioning goroutine so GetStatus returns RUNNING (async; allow CI headroom).
 		Eventually(func() v1alpha1.ThreeTierAppStatus {
 			resp, err := http.Get(srv.URL + "/api/v1alpha1/three-tier-apps")
 			if err != nil || resp.StatusCode != http.StatusOK {
 				return v1alpha1.PENDING
 			}
+			defer resp.Body.Close()
 			var list v1alpha1.ThreeTierAppList
 			if err := json.NewDecoder(resp.Body).Decode(&list); err != nil ||
-				list.ThreeTierApps == nil || len(*list.ThreeTierApps) == 0 ||
-				(*list.ThreeTierApps)[0].Status == nil {
+				list.ThreeTierApps == nil {
 				return v1alpha1.PENDING
 			}
-			return *(*list.ThreeTierApps)[0].Status
-		}, "2s", "10ms").Should(Equal(v1alpha1.RUNNING))
+			for _, a := range *list.ThreeTierApps {
+				if a.Id != nil && *a.Id == "list-stack" && a.Status != nil {
+					return *a.Status
+				}
+			}
+			return v1alpha1.PENDING
+		}, "15s", "25ms").Should(Equal(v1alpha1.RUNNING))
 	})
 })
 
@@ -302,14 +321,28 @@ var _ = Describe("Handlers status consistency (configurable client)", func() {
 			},
 		}
 		body, _ := json.Marshal(req)
-		_, err := http.Post(srv.URL+"/api/v1alpha1/three-tier-apps", "application/json", bytes.NewReader(body))
+		postResp, err := http.Post(srv.URL+"/api/v1alpha1/three-tier-apps", "application/json", bytes.NewReader(body))
 		Expect(err).NotTo(HaveOccurred())
+		Expect(postResp.StatusCode).To(Equal(http.StatusCreated))
+		_ = postResp.Body.Close()
 
-		// Wait for provisioning goroutine to finish before overriding status.
-		Eventually(func() int {
-			resp, _ := http.Get(srv.URL + "/api/v1alpha1/three-tier-apps/fail-stack")
-			return resp.StatusCode
-		}, "2s", "10ms").Should(Equal(http.StatusOK))
+		// Wait until provisioning completes (RUNNING). GET is 200 while still PENDING;
+		// setting FAILED early would make waitForRunning error and delete the row.
+		Eventually(func() v1alpha1.ThreeTierAppStatus {
+			resp, err := http.Get(srv.URL + "/api/v1alpha1/three-tier-apps/fail-stack")
+			if err != nil || resp.StatusCode != http.StatusOK {
+				if resp != nil {
+					_ = resp.Body.Close()
+				}
+				return v1alpha1.PENDING
+			}
+			defer resp.Body.Close()
+			var stack v1alpha1.ThreeTierApp
+			if err := json.NewDecoder(resp.Body).Decode(&stack); err != nil || stack.Status == nil {
+				return v1alpha1.PENDING
+			}
+			return *stack.Status
+		}, "15s", "25ms").Should(Equal(v1alpha1.RUNNING))
 
 		client.setStatus("fail-stack", v1alpha1.FAILED)
 
@@ -332,14 +365,27 @@ var _ = Describe("Handlers status consistency (configurable client)", func() {
 			},
 		}
 		body, _ := json.Marshal(req)
-		_, err := http.Post(srv.URL+"/api/v1alpha1/three-tier-apps", "application/json", bytes.NewReader(body))
+		postResp, err := http.Post(srv.URL+"/api/v1alpha1/three-tier-apps", "application/json", bytes.NewReader(body))
 		Expect(err).NotTo(HaveOccurred())
+		Expect(postResp.StatusCode).To(Equal(http.StatusCreated))
+		_ = postResp.Body.Close()
 
-		// Wait for provisioning goroutine to finish before overriding status.
-		Eventually(func() int {
-			resp, _ := http.Get(srv.URL + "/api/v1alpha1/three-tier-apps/pending-stack")
-			return resp.StatusCode
-		}, "2s", "10ms").Should(Equal(http.StatusOK))
+		// Wait until RUNNING before overriding; see fail-stack test comment.
+		Eventually(func() v1alpha1.ThreeTierAppStatus {
+			resp, err := http.Get(srv.URL + "/api/v1alpha1/three-tier-apps/pending-stack")
+			if err != nil || resp.StatusCode != http.StatusOK {
+				if resp != nil {
+					_ = resp.Body.Close()
+				}
+				return v1alpha1.PENDING
+			}
+			defer resp.Body.Close()
+			var stack v1alpha1.ThreeTierApp
+			if err := json.NewDecoder(resp.Body).Decode(&stack); err != nil || stack.Status == nil {
+				return v1alpha1.PENDING
+			}
+			return *stack.Status
+		}, "15s", "25ms").Should(Equal(v1alpha1.RUNNING))
 
 		client.setStatus("pending-stack", v1alpha1.PENDING)
 
