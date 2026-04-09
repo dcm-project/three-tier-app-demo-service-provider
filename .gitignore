@@ -31,3 +31,8 @@ bin/
 # Temporary files
 *.tmp
 *.log
+
+# Local env (copy from .env.example); never commit secrets
+.env
+
+kubeconfig*.yaml

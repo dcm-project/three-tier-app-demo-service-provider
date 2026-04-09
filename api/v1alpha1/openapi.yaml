@@ -2,7 +2,7 @@ openapi: 3.0.4
 info:
   title: 3-Tier Demo Service Provider API
   description: |
-    DCM service provider for 3-tier (web, app, db) demo stacks.
+    DCM service provider for 3-tier (web, app, db) demo apps.
     AEP-compliant REST API.
   version: 1.0.0
   contact:
@@ -19,8 +19,8 @@ servers:
 tags:
   - name: Health
     description: Health check
-  - name: Stacks
-    description: 3-tier stack lifecycle
+  - name: ThreeTierApps
+    description: 3-tier app lifecycle
 
 paths:
   /health:
@@ -38,13 +38,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Health'
 
-  /stacks:
+  /three-tier-apps:
     get:
-      summary: List Stacks
-      description: List 3-tier demo stacks with optional pagination
-      operationId: listStacks
+      summary: List Three-Tier Apps
+      description: List 3-tier demo apps with optional pagination
+      operationId: listThreeTierApps
       tags:
-        - Stacks
+        - ThreeTierApps
       parameters:
         - name: max_page_size
           in: query
@@ -64,7 +64,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StackList'
+                $ref: '#/components/schemas/ThreeTierAppList'
         '400':
           description: Bad request
           content:
@@ -79,24 +79,31 @@ paths:
                 $ref: '#/components/schemas/Error'
 
     post:
-      summary: Create Stack
-      description: Create a new 3-tier demo stack
-      operationId: createStack
+      summary: Create Three-Tier App
+      description: Create a new 3-tier demo app (DB, app, web)
+      operationId: createThreeTierApp
       tags:
-        - Stacks
+        - ThreeTierApps
+      parameters:
+        - name: id
+          in: query
+          description: Optional app ID for idempotent creation
+          schema:
+            type: string
+            pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Stack'
+              $ref: '#/components/schemas/ThreeTierApp'
       responses:
         '201':
-          description: Stack created
+          description: Three-tier app created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Stack'
+                $ref: '#/components/schemas/ThreeTierApp'
         '400':
           description: Bad request
           content:
@@ -116,15 +123,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /stacks/{stackId}:
+  /three-tier-apps/{threeTierAppId}:
     get:
-      summary: Get Stack
-      description: Get a stack by ID
-      operationId: getStack
+      summary: Get Three-Tier App
+      description: Get a 3-tier app by ID
+      operationId: getThreeTierApp
       tags:
-        - Stacks
+        - ThreeTierApps
       parameters:
-        - name: stackId
+        - name: threeTierAppId
           in: path
           required: true
           schema:
@@ -136,7 +143,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Stack'
+                $ref: '#/components/schemas/ThreeTierApp'
         '404':
           description: Not found
           content:
@@ -151,13 +158,13 @@ paths:
                 $ref: '#/components/schemas/Error'
 
     delete:
-      summary: Delete Stack
-      description: Delete a stack
-      operationId: deleteStack
+      summary: Delete Three-Tier App
+      description: Delete a 3-tier app
+      operationId: deleteThreeTierApp
       tags:
-        - Stacks
+        - ThreeTierApps
       parameters:
-        - name: stackId
+        - name: threeTierAppId
           in: path
           required: true
           schema:
@@ -188,7 +195,7 @@ components:
         singular: health
         plural: healths
         singleton: true
-        type: 3-tier-demo-service-provider.dcm.io/health
+        type: three-tier-demo-sp.dcm.io/health
         patterns:
           - health
       required:
@@ -200,7 +207,7 @@ components:
           type: string
           format: uri-reference
           readOnly: true
-          example: "3-tier-demo-service-provider.dcm.io/health"
+          example: "three-tier-demo-sp.dcm.io/health"
         state:
           type: string
           example: "healthy"
@@ -209,31 +216,50 @@ components:
           readOnly: true
           example: "health"
 
-    Stack:
+    ThreeTierApp:
       type: object
-      description: A 3-tier demo stack (web, app, db)
+      description: A 3-tier demo app (web, app, db)
       x-aep-resource:
-        type: 3-tier-demo-service-provider.dcm.io/stack
-        singular: stack
-        plural: stacks
+        type: three-tier-demo-sp.dcm.io/three-tier-app
+        singular: three-tier-app
+        plural: three-tier-apps
         patterns:
-          - stacks/{stack_id}
+          - three-tier-apps/{three_tier_app_id}
       required:
-        - name
+        - metadata
+        - spec
       properties:
         id:
           type: string
           readOnly: true
           pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
-          description: Unique stack ID
+          description: Unique app ID (server-generated from metadata.name)
         path:
           type: string
           readOnly: true
-          description: Resource path
-        name:
+          description: Resource path (server-generated)
+        metadata:
+          $ref: '#/components/schemas/ThreeTierAppMetadata'
+        spec:
+          $ref: '#/components/schemas/ThreeTierSpec'
+        status:
+          readOnly: true
+          allOf:
+            - $ref: '#/components/schemas/ThreeTierAppStatus'
+        service_type:
           type: string
-          description: Human-readable stack name
-          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          enum: [three_tier_app_demo]
+          description: Service type (must be three_tier_app_demo)
+        provider_hints:
+          type: object
+          additionalProperties: true
+        web_endpoint:
+          type: string
+          readOnly: true
+          description: |
+            URL to reach the web tier, populated when an external IP is available
+            (e.g. on OpenShift with a LoadBalancer). Nil when the cluster does not
+            assign an external IP (use `kubectl port-forward` instead).
         create_time:
           type: string
           format: date-time
@@ -243,15 +269,138 @@ components:
           format: date-time
           readOnly: true
 
-    StackList:
+    ThreeTierAppMetadata:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          minLength: 1
+          maxLength: 63
+          example: my-petclinic
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+
+    ThreeTierAppStatus:
+      type: string
+      enum: [PENDING, RUNNING, FAILED, DELETED]
+      description: Aggregated status of the 3-tier app
+
+    ThreeTierAppList:
       type: object
       properties:
-        stacks:
+        three_tier_apps:
           type: array
           items:
-            $ref: '#/components/schemas/Stack'
+            $ref: '#/components/schemas/ThreeTierApp'
         next_page_token:
           type: string
+
+    ThreeTierSpec:
+      type: object
+      description: Three-tier structure (database, app, web)
+      required:
+        - database
+        - app
+        - web
+      properties:
+        database:
+          $ref: '#/components/schemas/DatabaseTierSpec'
+        app:
+          $ref: '#/components/schemas/AppTierSpec'
+        web:
+          $ref: '#/components/schemas/WebTierSpec'
+
+    DatabaseTierSpec:
+      type: object
+      description: |
+        Database tier. Uses abstract identifiers (engine, version) only.
+        SP maps engine+version to OCI image (e.g. postgres+16 -> docker.io/library/postgres:16).
+      required:
+        - engine
+        - version
+      properties:
+        engine:
+          type: string
+          description: Database engine (postgres, mysql).
+          example: postgres
+        version:
+          type: string
+          description: Database engine version.
+          example: "16"
+        network:
+          $ref: '#/components/schemas/TierNetwork'
+
+    AppTierSpec:
+      type: object
+      description: Application tier. Uses OCI image.
+      required:
+        - image
+      properties:
+        image:
+          type: string
+          description: OCI image reference for the application.
+          example: docker.io/springcommunity/spring-framework-petclinic:6.1.2
+        http_port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: |
+            Primary HTTP port the application listens on.
+            Used by the web tier proxy to forward traffic. Defaults to 8080.
+          example: 8080
+        network:
+          $ref: '#/components/schemas/TierNetwork'
+
+    WebTierSpec:
+      type: object
+      description: Web tier. Uses OCI image.
+      required:
+        - image
+      properties:
+        image:
+          type: string
+          description: OCI image reference for the web server.
+          example: docker.io/library/nginx:alpine
+        network:
+          $ref: '#/components/schemas/TierNetwork'
+
+    TierNetwork:
+      type: object
+      properties:
+        ports:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContainerPort'
+
+    ContainerPort:
+      type: object
+      additionalProperties: true
+      required:
+        - container_port
+        - visibility
+      properties:
+        container_port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          example: 8080
+        visibility:
+          type: string
+          description: |
+            How this port is exposed to consumers.
+            - none: Port is not exposed outside the container process
+            - internal: Exposed to the host or cluster network
+            - external: Reachable from outside the host/cluster
+          enum:
+            - none
+            - internal
+            - external
+          example: internal
 
     Error:
       type: object
