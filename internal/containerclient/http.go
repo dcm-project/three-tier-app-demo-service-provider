@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/config"
@@ -98,6 +99,34 @@ func (h *HTTPClient) k8sProcessEnvForApp(stackID string, db v1alpha1.DatabaseTie
 	}
 }
 
+// k8sCreateContainerFailureDetail extracts RFC 7807 detail or raw body from a non-success CreateContainer response.
+func k8sCreateContainerFailureDetail(resp *k8sclient.CreateContainerResponse) string {
+	if resp == nil {
+		return ""
+	}
+	for _, e := range []*k8sapi.Error{
+		resp.ApplicationproblemJSON400,
+		resp.ApplicationproblemJSON401,
+		resp.ApplicationproblemJSON403,
+		resp.ApplicationproblemJSON409,
+		resp.ApplicationproblemJSON500,
+	} {
+		if e == nil {
+			continue
+		}
+		if e.Detail != nil && strings.TrimSpace(*e.Detail) != "" {
+			return strings.TrimSpace(*e.Detail)
+		}
+		if strings.TrimSpace(e.Title) != "" {
+			return strings.TrimSpace(e.Title)
+		}
+	}
+	if len(resp.Body) > 0 {
+		return strings.TrimSpace(string(resp.Body))
+	}
+	return ""
+}
+
 func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec v1alpha1.ThreeTierSpec) error {
 	dbPort := 5432
 	if spec.Database.Engine == "mysql" {
@@ -172,6 +201,10 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 			return ErrConflict
 		default:
 			_ = deleteContainerIDs(ctx, h.Client, ids)
+			detail := k8sCreateContainerFailureDetail(resp)
+			if detail != "" {
+				return fmt.Errorf("create %s: unexpected status %d: %s", t.name, resp.StatusCode(), detail)
+			}
 			return fmt.Errorf("create %s: unexpected status %d", t.name, resp.StatusCode())
 		}
 	}

@@ -59,6 +59,26 @@ var _ = Describe("HTTPClient", func() {
 			Expect(client.CreateContainers(ctx, "stack1", spec)).To(Succeed())
 			Expect(client.CreateContainers(ctx, "stack1", spec)).To(MatchError(containerclient.ErrConflict))
 		})
+
+		It("includes k8s SP problem detail when create returns HTTP 400", func() {
+			err := client.CreateContainers(ctx, "mock-400", spec)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(And(
+				ContainSubstring("create db:"),
+				ContainSubstring("unexpected status 400"),
+				ContainSubstring("mock create rejected (400)"),
+			))
+		})
+
+		It("includes k8s SP problem detail when create returns HTTP 500", func() {
+			err := client.CreateContainers(ctx, "mock-500", spec)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(And(
+				ContainSubstring("create db:"),
+				ContainSubstring("unexpected status 500"),
+				ContainSubstring("mock create failed (500)"),
+			))
+		})
 	})
 
 	Describe("DeleteContainers", func() {
