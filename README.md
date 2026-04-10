@@ -12,9 +12,17 @@ DCM service provider for a 3-tier (web, app, db) demo app. Catalog:
 | **A. Mock** | Nothing | In-memory only (`make run`). |
 | **B. Podman** | Podman | Containers on your machine; Pet Clinic on **http://localhost:9080**. |
 | **C. Kubernetes** | Kind + [api-gateway](https://github.com/dcm-project/api-gateway) Compose + k8s container SP | Pods in Kind; see below. |
+| **D. OpenShift** | Same as C, plus kube credentials for `Route` objects | Web URL from **Route** when `SP_WEB_EXPOSURE=openshift` (see Configuration). |
 
 - **Kubernetes path:** set `CONTAINER_SP_URL` to the k8s container SP HTTP base
-  URL (no trailing slash).
+  URL (no trailing slash). Default **`SP_WEB_EXPOSURE=kubernetes`**: web tier uses an
+  external `Service`; **`webEndpoint`** uses the LoadBalancer IP from the k8s SP when available.
+- **OpenShift path:** set **`SP_WEB_EXPOSURE=openshift`**, **`SP_OPENSHIFT_ROUTE_NAMESPACE`**
+  to **exactly** the k8s container SP’s **`NAMESPACE`**, and use kube credentials (**`KUBECONFIG`**
+  / **`SP_OPENSHIFT_KUBECONFIG`** / in-cluster SA) for the **same cluster** where that SP
+  creates workloads. This process needs permission to create/delete **`Route`** in that
+  namespace (similar scope to the container SP’s cluster access). The SP creates a Route to
+  **`<name>-web`** and sets **`webEndpoint`** to **`https://…`** (edge TLS).
 - **Mock / Podman:** leave `CONTAINER_SP_URL` empty; use `DEV_CONTAINER_BACKEND`
   (`mock` or `podman`).
 
@@ -73,20 +81,27 @@ app, browser access, delete, stop).
 |----------|---------|---------|
 | `CONTAINER_SP_URL` | k8s container SP base URL | (empty) |
 | `DEV_CONTAINER_BACKEND` | `mock` or `podman` if no `CONTAINER_SP_URL` | `mock` |
+| `SP_WEB_EXPOSURE` | `kubernetes` (LB/NodePort via k8s SP) or `openshift` (Route + internal Service) | `kubernetes` |
+| `SP_OPENSHIFT_ROUTE_NAMESPACE` | Must match k8s container SP **`NAMESPACE`** (same namespace as Services) | (empty) |
+| `SP_OPENSHIFT_KUBECONFIG` | Optional kubeconfig; must target the **same cluster** as the container SP | (empty; uses default rules) |
 | `SVC_ADDRESS` | Listen address | `:8080` |
 | `TIER_STACK_DB_PASSWORD` | DB password | `petclinic` |
 | `TIER_STACK_DB_NAME` | DB name | `petclinic` |
 | `TIER_STACK_POSTGRES_USER` / `TIER_STACK_MYSQL_USER` | JDBC user | `postgres` / `root` |
-| `DCM_REGISTRATION_URL`, `SP_NAME`, `SP_ENDPOINT` | Self-registration | (empty) |
-| `STATUS_REPORT_URL` | CloudEvents endpoint for DCM | (empty) |
+| `SP_DCM_REGISTRATION_URL`, `SP_PROVIDER_NAME`, `SP_PROVIDER_ENDPOINT` | Self-registration | (empty) |
+| `SP_NATS_URL` | NATS URL for status events to DCM | (empty) |
 
 Optional **`.env`** in the working directory: `cp .env.example .env` (not
 committed; replace placeholder passwords).
 
 With **`CONTAINER_SP_URL`**, the SP creates **`<name>-db`**, **`<name>-app`**,
 **`<name>-web`** via the k8s SP (**`name`** = **`metadata.name`** on the 3-tier
-app). Web port 80 is external; access depends on cluster (port-forward, Route,
-LoadBalancer, etc.).
+app). How **`webEndpoint`** is filled depends on **`SP_WEB_EXPOSURE`** (see table above).
+
+For **`openshift`**, the Route must live in the same namespace as the web **Service** the
+k8s container SP creates, and the API client must talk to the same cluster—otherwise the
+Route would not point at the real **`<name>-web`** Service.
+
 
 ---
 
@@ -108,7 +123,7 @@ make check-generate-api
 ```
 
 Create waits until all tiers are **RUNNING** (Podman inspect or k8s SP GET).
-Optional **`STATUS_REPORT_URL`** sends 3-tier app status to DCM after that.
+Optional **`SP_NATS_URL`** sends 3-tier app status to DCM after that.
 
 ### Releasing
 

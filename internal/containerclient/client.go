@@ -29,11 +29,28 @@ func New(cfg config.Config, logger *slog.Logger) (ContainerClient, error) {
 		}, nil
 	case "":
 		if cfg.ContainerSPURL != "" {
-			c, err := NewHTTPClient(cfg.ContainerSPURL, cfg.StackDB)
+			exposure := cfg.WebExposure
+			if exposure == "" {
+				exposure = webExposureKubernetes
+			}
+			var oroutes *openShiftRoutes
+			if exposure == webExposureOpenShift {
+				if cfg.OpenShiftRouteNamespace == "" {
+					return nil, fmt.Errorf("SP_OPENSHIFT_ROUTE_NAMESPACE is required when SP_WEB_EXPOSURE=openshift")
+				}
+				var err error
+				oroutes, err = newOpenShiftRoutes(cfg.OpenShiftKubeconfig, cfg.OpenShiftRouteNamespace)
+				if err != nil {
+					return nil, err
+				}
+				logger.Info("using k8s container SP with OpenShift Routes", "url", cfg.ContainerSPURL, "route_namespace", cfg.OpenShiftRouteNamespace)
+			} else {
+				logger.Info("using k8s container SP", "url", cfg.ContainerSPURL)
+			}
+			c, err := newHTTPClient(cfg.ContainerSPURL, cfg.StackDB, exposure, oroutes)
 			if err != nil {
 				return nil, fmt.Errorf("creating container SP HTTP client: %w", err)
 			}
-			logger.Info("using k8s container SP", "url", cfg.ContainerSPURL)
 			return c, nil
 		}
 		logger.Info("using mock backend")

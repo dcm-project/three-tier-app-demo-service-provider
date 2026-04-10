@@ -14,17 +14,31 @@ import (
 )
 
 type HTTPClient struct {
-	Client     *k8sclient.ClientWithResponses
-	StackDBCfg config.StackDBCfg
+	Client          *k8sclient.ClientWithResponses
+	StackDBCfg      config.StackDBCfg
+	webExposure     string
+	openShiftRoutes *openShiftRoutes
 }
 
-// NewHTTPClient creates an HTTP client for the given base URL.
+// NewHTTPClient creates an HTTP client for the given base URL (kubernetes exposure: external web Service).
 func NewHTTPClient(baseURL string, stackDBCfg config.StackDBCfg) (*HTTPClient, error) {
+	return newHTTPClient(baseURL, stackDBCfg, webExposureKubernetes, nil)
+}
+
+func newHTTPClient(baseURL string, stackDBCfg config.StackDBCfg, exposure string, oroutes *openShiftRoutes) (*HTTPClient, error) {
 	client, err := k8sclient.NewClientWithResponses(baseURL)
 	if err != nil {
 		return nil, err
 	}
-	return &HTTPClient{Client: client, StackDBCfg: stackDBCfg}, nil
+	if exposure == "" {
+		exposure = webExposureKubernetes
+	}
+	return &HTTPClient{
+		Client:          client,
+		StackDBCfg:      stackDBCfg,
+		webExposure:     exposure,
+		openShiftRoutes: oroutes,
+	}, nil
 }
 
 func tierPorts(net *v1alpha1.TierNetwork, defaultPort int, visibility k8sapi.ContainerPortVisibility) []k8sapi.ContainerPort {
@@ -136,6 +150,10 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 	if spec.App.HttpPort != nil {
 		appPort = *spec.App.HttpPort
 	}
+	webVis := k8sapi.External
+	if h.webExposure == webExposureOpenShift {
+		webVis = k8sapi.Internal
+	}
 	// Fixed sizing (not user-configurable): Pet Clinic JVM + DB need headroom; nginx stays small.
 	tiers := []struct {
 		name    string
@@ -163,7 +181,7 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 		},
 		{
 			name: "web", id: stackID + "-web", image: spec.Web.Image,
-			ports: tierPorts(spec.Web.Network, 80, k8sapi.External), process: k8sProcessForWeb(stackID, appPort),
+			ports: tierPorts(spec.Web.Network, 80, webVis), process: k8sProcessForWeb(stackID, appPort),
 			res: k8sapi.ContainerResources{
 				Cpu:    k8sapi.ContainerCpu{Min: 1, Max: 4},
 				Memory: k8sapi.ContainerMemory{Min: "512MB", Max: "1GB"},
@@ -212,6 +230,9 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 }
 
 func (h *HTTPClient) DeleteContainers(ctx context.Context, stackID string) error {
+	if h.openShiftRoutes != nil {
+		_ = h.openShiftRoutes.deleteRoute(ctx, stackID)
+	}
 	return deleteContainerIDs(ctx, h.Client, []string{
 		stackID + "-db", stackID + "-app", stackID + "-web",
 	})
@@ -237,10 +258,19 @@ func deleteContainerIDs(ctx context.Context, client *k8sclient.ClientWithRespons
 	return errors.Join(errs...)
 }
 
-// GetWebEndpoint queries the web container's service info and returns its external URL when
-// the platform has assigned an external IP (e.g. OpenShift LoadBalancer). Returns nil for
-// Kind/bare k8s clusters without a load-balancer controller.
+// GetWebEndpoint returns a browser URL for the web tier: OpenShift Route (SP_WEB_EXPOSURE=openshift)
+// or LoadBalancer external IP (kubernetes). Returns nil when unavailable.
 func (h *HTTPClient) GetWebEndpoint(ctx context.Context, stackID string) *string {
+	if h.webExposure == webExposureOpenShift {
+		if h.openShiftRoutes == nil {
+			return nil
+		}
+		u, err := h.openShiftRoutes.ensureWebRoute(ctx, stackID)
+		if err != nil || u == nil {
+			return nil
+		}
+		return u
+	}
 	webID := stackID + "-web"
 	resp, err := h.Client.GetContainerWithResponse(ctx, webID)
 	if err != nil || resp.StatusCode() != http.StatusOK || resp.JSON200 == nil {
