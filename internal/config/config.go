@@ -15,6 +15,13 @@ type Config struct {
 	SVCLogLevel         string `env:"SVC_LOG_LEVEL"        envDefault:"info"`
 	ContainerSPURL      string `env:"CONTAINER_SP_URL"`
 	DevContainerBackend string `env:"DEV_CONTAINER_BACKEND"`
+	// WebExposure selects how the web tier is published: "kubernetes" (LoadBalancer/NodePort via k8s SP)
+	// or "openshift" (ClusterIP Service + OpenShift Route created by this SP). Requires kube access for Route.
+	WebExposure string `env:"SP_WEB_EXPOSURE" envDefault:"kubernetes"`
+	// OpenShiftRouteNamespace is the namespace where the k8s container SP creates Services (required for openshift exposure).
+	OpenShiftRouteNamespace string `env:"SP_OPENSHIFT_ROUTE_NAMESPACE" envDefault:""`
+	// OpenShiftKubeconfig is an optional kubeconfig path for Route create/delete; empty uses default loading (e.g. KUBECONFIG).
+	OpenShiftKubeconfig string `env:"SP_OPENSHIFT_KUBECONFIG" envDefault:""`
 	// PodmanWebHostPort publishes the nginx web container to this host port
 	// when using the Podman backend (e.g. "8081"). Empty = no host publish,
 	// avoiding conflicts with other services (ygalblum).
