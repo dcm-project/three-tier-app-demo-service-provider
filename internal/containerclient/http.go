@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -29,9 +30,6 @@ func newHTTPClient(baseURL string, stackDBCfg config.StackDBCfg, exposure string
 	client, err := k8sclient.NewClientWithResponses(baseURL)
 	if err != nil {
 		return nil, err
-	}
-	if exposure == "" {
-		exposure = config.WebExposureKubernetes
 	}
 	return &HTTPClient{
 		Client:          client,
@@ -150,9 +148,13 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 	if spec.App.HttpPort != nil {
 		appPort = *spec.App.HttpPort
 	}
-	webVis := k8sapi.External
+	var webVis k8sapi.ContainerPortVisibility
 	if h.webExposure == config.WebExposureOpenShift {
+		// Route handles ingress; web Service stays internal.
 		webVis = k8sapi.Internal
+	} else {
+		// Vanilla k8s: k8s SP exposes the web Service (LB / NodePort).
+		webVis = k8sapi.External
 	}
 	// Fixed sizing (not user-configurable): Pet Clinic JVM + DB need headroom; nginx stays small.
 	tiers := []struct {
@@ -231,7 +233,9 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 
 func (h *HTTPClient) DeleteContainers(ctx context.Context, stackID string) error {
 	if h.openShiftRoutes != nil {
-		_ = h.openShiftRoutes.deleteRoute(ctx, stackID)
+		if err := h.openShiftRoutes.deleteRoute(ctx, stackID); err != nil {
+			slog.WarnContext(ctx, "delete openshift route", "stack_id", stackID, "err", err)
+		}
 	}
 	return deleteContainerIDs(ctx, h.Client, []string{
 		stackID + "-db", stackID + "-app", stackID + "-web",
@@ -263,10 +267,16 @@ func deleteContainerIDs(ctx context.Context, client *k8sclient.ClientWithRespons
 func (h *HTTPClient) GetWebEndpoint(ctx context.Context, stackID string) *string {
 	if h.webExposure == config.WebExposureOpenShift {
 		if h.openShiftRoutes == nil {
+			slog.WarnContext(ctx, "openshift web exposure but route client is nil; misconfiguration",
+				"stack_id", stackID)
 			return nil
 		}
 		u, err := h.openShiftRoutes.ensureWebRoute(ctx, stackID)
-		if err != nil || u == nil {
+		if err != nil {
+			slog.WarnContext(ctx, "ensure openshift web route", "stack_id", stackID, "err", err)
+			return nil
+		}
+		if u == nil {
 			return nil
 		}
 		return u
