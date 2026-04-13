@@ -20,6 +20,9 @@ var ErrNotFound = errors.New("container not found")
 // Selection order: DEV_CONTAINER_BACKEND=podman → PodmanClient,
 // CONTAINER_SP_URL set → HTTPClient, otherwise MockClient.
 func New(cfg config.Config, logger *slog.Logger) (ContainerClient, error) {
+	if err := config.Prepare(&cfg); err != nil {
+		return nil, err
+	}
 	switch cfg.DevContainerBackend {
 	case "podman":
 		logger.Info("using Podman backend")
@@ -31,15 +34,12 @@ func New(cfg config.Config, logger *slog.Logger) (ContainerClient, error) {
 		if cfg.ContainerSPURL != "" {
 			var oroutes *openShiftRoutes
 			if cfg.WebExposure == config.WebExposureOpenShift {
-				if cfg.OpenShiftRouteNamespace == "" {
-					return nil, fmt.Errorf("SP_OPENSHIFT_ROUTE_NAMESPACE is required when SP_WEB_EXPOSURE=openshift")
-				}
 				var err error
-				oroutes, err = newOpenShiftRoutes(cfg.OpenShiftKubeconfig, cfg.OpenShiftRouteNamespace)
+				oroutes, err = newOpenShiftRoutes(cfg.Kubernetes.Kubeconfig, cfg.Kubernetes.Namespace)
 				if err != nil {
 					return nil, err
 				}
-				logger.Info("using k8s container SP with OpenShift Routes", "url", cfg.ContainerSPURL, "route_namespace", cfg.OpenShiftRouteNamespace)
+				logger.Info("using k8s container SP with OpenShift Routes", "url", cfg.ContainerSPURL, "route_namespace", cfg.Kubernetes.Namespace)
 			} else {
 				logger.Info("using k8s container SP", "url", cfg.ContainerSPURL)
 			}

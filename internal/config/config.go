@@ -23,13 +23,13 @@ type Config struct {
 	ContainerSPURL      string `env:"CONTAINER_SP_URL"`
 	DevContainerBackend string `env:"DEV_CONTAINER_BACKEND"`
 	// WebExposure selects how the web tier is published: "kubernetes" (LoadBalancer/NodePort via k8s SP)
-	// or "openshift" (ClusterIP Service + OpenShift Route created by this SP). Requires kube access for Route.
-	WebExposure string `env:"SP_WEB_EXPOSURE" envDefault:"kubernetes"`
-	// OpenShiftRouteNamespace is the namespace where the k8s container SP creates Services (OpenShift Route exposure).
-	// Defaults to "default", matching the k8s container SP's usual NAMESPACE.
-	OpenShiftRouteNamespace string `env:"SP_OPENSHIFT_ROUTE_NAMESPACE" envDefault:"default"`
-	// OpenShiftKubeconfig is an optional kubeconfig path for Route create/delete; empty uses default loading (e.g. KUBECONFIG).
-	OpenShiftKubeconfig string `env:"SP_OPENSHIFT_KUBECONFIG" envDefault:""`
+	// or "openshift" (ClusterIP Service + OpenShift Route created by this SP). String values keep both
+	// paths explicit instead of a boolean flag. Default openshift uses Routes for the browser URL;
+	// use kubernetes for Kind, vanilla k8s, and CI that follow api-gateway Kind docs.
+	WebExposure string `env:"SP_WEB_EXPOSURE" envDefault:"openshift"`
+	// Kubernetes uses the same env names as k8s-container-service-provider (SP_K8S_NAMESPACE, SP_K8S_KUBECONFIG).
+	// Namespace is where Services (and OpenShift Routes) live; default "default" matches that SP.
+	Kubernetes KubernetesConfig `envPrefix:"SP_K8S_"`
 	// PodmanWebHostPort publishes the nginx web container to this host port
 	// when using the Podman backend (e.g. "8081"). Empty = no host publish,
 	// avoiding conflicts with other services (ygalblum).
@@ -68,6 +68,12 @@ type ProviderConfig struct {
 	Zone        string `env:"ZONE"`
 }
 
+// KubernetesConfig holds cluster settings (same env names as k8s-container-service-provider).
+type KubernetesConfig struct {
+	Namespace  string `env:"NAMESPACE" envDefault:"default"`
+	Kubeconfig string `env:"KUBECONFIG"`
+}
+
 // StoreConfig holds the SP's own persistence settings.
 // DB_TYPE selects the backend: "pgsql" (default) or "sqlite".
 type StoreConfig struct {
@@ -91,14 +97,30 @@ func Load() (Config, error) {
 	if err := env.Parse(&cfg); err != nil {
 		return Config{}, fmt.Errorf("loading config: %w", err)
 	}
-	cfg.WebExposure = strings.TrimSpace(cfg.WebExposure)
-	if cfg.WebExposure == "" {
-		cfg.WebExposure = WebExposureKubernetes
-	}
-	if err := cfg.Validate(); err != nil {
+	if err := Prepare(&cfg); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// Prepare applies trim/default normalization then [Config.Validate].
+// Use after env.Parse and before constructing runtime clients so rules live in
+// one place (ygalblum).
+func Prepare(c *Config) error {
+	normalize(c)
+	return c.Validate()
+}
+
+func normalize(c *Config) {
+	c.WebExposure = strings.TrimSpace(c.WebExposure)
+	if c.WebExposure == "" {
+		c.WebExposure = WebExposureOpenShift
+	}
+	c.Kubernetes.Namespace = strings.TrimSpace(c.Kubernetes.Namespace)
+	if c.Kubernetes.Namespace == "" {
+		// Same default namespace as k8s-container-service-provider (SP_K8S_NAMESPACE).
+		c.Kubernetes.Namespace = "default"
+	}
 }
 
 // Validate checks configuration values that env parsing alone does not constrain.
