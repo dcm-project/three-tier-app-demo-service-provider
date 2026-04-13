@@ -1,20 +1,22 @@
+# Build stage
 FROM registry.access.redhat.com/ubi9/go-toolset:1.25.5 AS builder
 
-WORKDIR /build
+WORKDIR /app
 
 COPY go.mod go.sum ./
-USER root
 RUN go mod download
 
 COPY . .
 
+USER root
 RUN CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -o 3-tier-demo-service-provider ./cmd/3-tier-demo-service-provider
 
+# Runtime stage
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 WORKDIR /app
 
-COPY --from=builder /build/3-tier-demo-service-provider .
+COPY --from=builder /app/3-tier-demo-service-provider .
 
 EXPOSE 8080
 

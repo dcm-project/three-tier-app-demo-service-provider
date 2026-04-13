@@ -1,0 +1,10 @@
+.git
+.github
+.cache
+.claude
+bin/
+*.md
+.gitignore
+.spectral.yaml
+compose.yaml
+test/

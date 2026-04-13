@@ -36,10 +36,9 @@ func New(addr string, handler http.Handler, logger *slog.Logger) (*Server, error
 	if err != nil {
 		return nil, fmt.Errorf("loading OpenAPI spec: %w", err)
 	}
-	// Disable server URL validation so the middleware works regardless of host/port.
-	swagger.Servers = nil
 
 	validate := oapimiddleware.OapiRequestValidatorWithOptions(swagger, &oapimiddleware.Options{
+		SilenceServersWarning: true,
 		ErrorHandler: func(w http.ResponseWriter, message string, statusCode int) {
 			http.Error(w, message, statusCode)
 		},

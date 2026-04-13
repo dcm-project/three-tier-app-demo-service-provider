@@ -15,6 +15,11 @@ import (
 // API (POST/GET/DELETE /api/v1alpha1/containers[/{id}]).
 // TEST-ONLY: Used for contract testing in http_test.go. Not used by runtime.
 // Stateful: Create returns 409 for duplicate IDs, Delete returns 404 for non-existent.
+//
+// Create also supports deterministic failure injection via container id (query ?id=):
+//   - id prefix "mock-400-" → 400 application/problem+json (body not recorded as created)
+//   - id prefix "mock-500-" → 500 application/problem+json
+// Use stack IDs like "mock-400" / "mock-500" so tier ids become mock-400-db, etc.
 func MockContainerServer() *httptest.Server {
 	mux := http.NewServeMux()
 	state := &mockServerState{created: make(map[string]struct{})}
@@ -65,6 +70,14 @@ func (s *mockServerState) handleCreate(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusConflict)
 		_ = json.NewEncoder(w).Encode(map[string]string{"type": "ALREADY_EXISTS", "detail": "container already exists"})
+		return
+	}
+	if strings.HasPrefix(id, "mock-400-") {
+		writeMockProblem(w, http.StatusBadRequest, "mock create rejected (400)")
+		return
+	}
+	if strings.HasPrefix(id, "mock-500-") {
+		writeMockProblem(w, http.StatusInternalServerError, "mock create failed (500)")
 		return
 	}
 	s.created[id] = struct{}{}
@@ -132,6 +145,17 @@ func (s *mockServerState) handleDelete(w http.ResponseWriter, id string) {
 	}
 	delete(s.created, id)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func writeMockProblem(w http.ResponseWriter, status int, detail string) {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"type":   "about:blank",
+		"title":  http.StatusText(status),
+		"status": status,
+		"detail": detail,
+	})
 }
 
 func ptr[T any](v T) *T { return &v }
