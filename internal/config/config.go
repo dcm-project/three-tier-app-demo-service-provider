@@ -18,8 +18,9 @@ type Config struct {
 	// WebExposure selects how the web tier is published: "kubernetes" (LoadBalancer/NodePort via k8s SP)
 	// or "openshift" (ClusterIP Service + OpenShift Route created by this SP). Requires kube access for Route.
 	WebExposure string `env:"SP_WEB_EXPOSURE" envDefault:"kubernetes"`
-	// OpenShiftRouteNamespace is the namespace where the k8s container SP creates Services (required for openshift exposure).
-	OpenShiftRouteNamespace string `env:"SP_OPENSHIFT_ROUTE_NAMESPACE" envDefault:""`
+	// OpenShiftRouteNamespace is the namespace where the k8s container SP creates Services (OpenShift Route exposure).
+	// Defaults to "default", matching the k8s container SP's usual NAMESPACE.
+	OpenShiftRouteNamespace string `env:"SP_OPENSHIFT_ROUTE_NAMESPACE" envDefault:"default"`
 	// OpenShiftKubeconfig is an optional kubeconfig path for Route create/delete; empty uses default loading (e.g. KUBECONFIG).
 	OpenShiftKubeconfig string `env:"SP_OPENSHIFT_KUBECONFIG" envDefault:""`
 	// PodmanWebHostPort publishes the nginx web container to this host port

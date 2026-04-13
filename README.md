@@ -17,12 +17,13 @@ DCM service provider for a 3-tier (web, app, db) demo app. Catalog:
 - **Kubernetes path:** set `CONTAINER_SP_URL` to the k8s container SP HTTP base
   URL (no trailing slash). Default **`SP_WEB_EXPOSURE=kubernetes`**: web tier uses an
   external `Service`; **`webEndpoint`** uses the LoadBalancer IP from the k8s SP when available.
-- **OpenShift path:** set **`SP_WEB_EXPOSURE=openshift`**, **`SP_OPENSHIFT_ROUTE_NAMESPACE`**
-  to **exactly** the k8s container SP’s **`NAMESPACE`**, and use kube credentials (**`KUBECONFIG`**
-  / **`SP_OPENSHIFT_KUBECONFIG`** / in-cluster SA) for the **same cluster** where that SP
-  creates workloads. This process needs permission to create/delete **`Route`** in that
-  namespace (similar scope to the container SP’s cluster access). The SP creates a Route to
-  **`<name>-web`** and sets **`webEndpoint`** to **`https://…`** (edge TLS).
+- **OpenShift path:** set **`SP_WEB_EXPOSURE=openshift`**. **`SP_OPENSHIFT_ROUTE_NAMESPACE`**
+  defaults to **`default`**, matching the k8s container SP’s usual **`NAMESPACE`** default; set it
+  to the namespace where that k8s container SP runs if not **`default`**. Use kube credentials
+  (**`KUBECONFIG`** / **`SP_OPENSHIFT_KUBECONFIG`** / in-cluster SA) for the **same cluster** as
+  **`CONTAINER_SP_URL`** (the k8s container SP). This service needs permission to create and delete
+  **`Route`** objects in that namespace. It then creates a Route to **`<name>-web`** and sets
+  **`webEndpoint`** to **`https://…`** (edge TLS).
 - **Mock / Podman:** leave `CONTAINER_SP_URL` empty; use `DEV_CONTAINER_BACKEND`
   (`mock` or `podman`).
 
@@ -82,8 +83,8 @@ app, browser access, delete, stop).
 | `CONTAINER_SP_URL` | k8s container SP base URL | (empty) |
 | `DEV_CONTAINER_BACKEND` | `mock` or `podman` if no `CONTAINER_SP_URL` | `mock` |
 | `SP_WEB_EXPOSURE` | `kubernetes` (LB/NodePort via k8s SP) or `openshift` (Route + internal Service) | `kubernetes` |
-| `SP_OPENSHIFT_ROUTE_NAMESPACE` | Must match k8s container SP **`NAMESPACE`** (same namespace as Services) | (empty) |
-| `SP_OPENSHIFT_KUBECONFIG` | Optional kubeconfig; must target the **same cluster** as the container SP | (empty; uses default rules) |
+| `SP_OPENSHIFT_ROUTE_NAMESPACE` | Must match k8s container SP **`NAMESPACE`** (same namespace as Services) | `default` |
+| `SP_OPENSHIFT_KUBECONFIG` | Optional kubeconfig; must target the **same cluster** as the k8s container SP | (empty; uses default rules) |
 | `SVC_ADDRESS` | Listen address | `:8080` |
 | `TIER_STACK_DB_PASSWORD` | DB password | `petclinic` |
 | `TIER_STACK_DB_NAME` | DB name | `petclinic` |
