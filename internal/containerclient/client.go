@@ -29,12 +29,8 @@ func New(cfg config.Config, logger *slog.Logger) (ContainerClient, error) {
 		}, nil
 	case "":
 		if cfg.ContainerSPURL != "" {
-			exposure := cfg.WebExposure
-			if exposure == "" {
-				exposure = webExposureKubernetes
-			}
 			var oroutes *openShiftRoutes
-			if exposure == webExposureOpenShift {
+			if cfg.WebExposure == config.WebExposureOpenShift {
 				if cfg.OpenShiftRouteNamespace == "" {
 					return nil, fmt.Errorf("SP_OPENSHIFT_ROUTE_NAMESPACE is required when SP_WEB_EXPOSURE=openshift")
 				}
@@ -47,7 +43,7 @@ func New(cfg config.Config, logger *slog.Logger) (ContainerClient, error) {
 			} else {
 				logger.Info("using k8s container SP", "url", cfg.ContainerSPURL)
 			}
-			c, err := newHTTPClient(cfg.ContainerSPURL, cfg.StackDB, exposure, oroutes)
+			c, err := newHTTPClient(cfg.ContainerSPURL, cfg.StackDB, cfg.WebExposure, oroutes)
 			if err != nil {
 				return nil, fmt.Errorf("creating container SP HTTP client: %w", err)
 			}

@@ -14,11 +14,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-const (
-	webExposureKubernetes = "kubernetes"
-	webExposureOpenShift    = "openshift"
-)
-
 // openShiftRoutes creates and deletes OpenShift Route resources for the web tier.
 // Used when SP_WEB_EXPOSURE=openshift so the public URL comes from the cluster router.
 type openShiftRoutes struct {

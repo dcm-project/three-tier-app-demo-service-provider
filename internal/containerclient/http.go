@@ -22,7 +22,7 @@ type HTTPClient struct {
 
 // NewHTTPClient creates an HTTP client for the given base URL (kubernetes exposure: external web Service).
 func NewHTTPClient(baseURL string, stackDBCfg config.StackDBCfg) (*HTTPClient, error) {
-	return newHTTPClient(baseURL, stackDBCfg, webExposureKubernetes, nil)
+	return newHTTPClient(baseURL, stackDBCfg, config.WebExposureKubernetes, nil)
 }
 
 func newHTTPClient(baseURL string, stackDBCfg config.StackDBCfg, exposure string, oroutes *openShiftRoutes) (*HTTPClient, error) {
@@ -31,7 +31,7 @@ func newHTTPClient(baseURL string, stackDBCfg config.StackDBCfg, exposure string
 		return nil, err
 	}
 	if exposure == "" {
-		exposure = webExposureKubernetes
+		exposure = config.WebExposureKubernetes
 	}
 	return &HTTPClient{
 		Client:          client,
@@ -151,7 +151,7 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 		appPort = *spec.App.HttpPort
 	}
 	webVis := k8sapi.External
-	if h.webExposure == webExposureOpenShift {
+	if h.webExposure == config.WebExposureOpenShift {
 		webVis = k8sapi.Internal
 	}
 	// Fixed sizing (not user-configurable): Pet Clinic JVM + DB need headroom; nginx stays small.
@@ -261,7 +261,7 @@ func deleteContainerIDs(ctx context.Context, client *k8sclient.ClientWithRespons
 // GetWebEndpoint returns a browser URL for the web tier: OpenShift Route (SP_WEB_EXPOSURE=openshift)
 // or LoadBalancer external IP (kubernetes). Returns nil when unavailable.
 func (h *HTTPClient) GetWebEndpoint(ctx context.Context, stackID string) *string {
-	if h.webExposure == webExposureOpenShift {
+	if h.webExposure == config.WebExposureOpenShift {
 		if h.openShiftRoutes == nil {
 			return nil
 		}

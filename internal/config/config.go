@@ -4,9 +4,16 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	env "github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
+)
+
+// Allowed values for SP_WEB_EXPOSURE (validated in [Config.Validate]).
+const (
+	WebExposureKubernetes = "kubernetes"
+	WebExposureOpenShift  = "openshift"
 )
 
 // Config holds all service configuration.
@@ -84,7 +91,25 @@ func Load() (Config, error) {
 	if err := env.Parse(&cfg); err != nil {
 		return Config{}, fmt.Errorf("loading config: %w", err)
 	}
+	cfg.WebExposure = strings.TrimSpace(cfg.WebExposure)
+	if cfg.WebExposure == "" {
+		cfg.WebExposure = WebExposureKubernetes
+	}
+	if err := cfg.Validate(); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// Validate checks configuration values that env parsing alone does not constrain.
+func (c Config) Validate() error {
+	switch c.WebExposure {
+	case WebExposureKubernetes, WebExposureOpenShift:
+		return nil
+	default:
+		return fmt.Errorf("invalid SP_WEB_EXPOSURE %q (valid: %q, %q)",
+			c.WebExposure, WebExposureKubernetes, WebExposureOpenShift)
+	}
 }
 
 // RegistrationEnabled returns true when all required registration fields are set.
