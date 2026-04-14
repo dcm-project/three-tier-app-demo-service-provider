@@ -110,6 +110,13 @@ make check-generate-api
 Create waits until all tiers are **RUNNING** (Podman inspect or k8s SP GET).
 Optional **`STATUS_REPORT_URL`** sends 3-tier app status to DCM after that.
 
+### Releasing
+
+Images are pushed to `quay.io/dcm-project/three-tier-app-demo-service-provider`.
+See [Releasing](https://github.com/dcm-project/shared-workflows#release-flow)
+in shared-workflows for the full release process, tag behavior, and version conventions.
+
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).
