@@ -20,7 +20,7 @@ var ErrNotFound = errors.New("container not found")
 // Selection order: DEV_CONTAINER_BACKEND=podman → PodmanClient,
 // CONTAINER_SP_URL set → HTTPClient, otherwise MockClient.
 func New(cfg config.Config, logger *slog.Logger) (ContainerClient, error) {
-	if err := config.Prepare(&cfg); err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 	switch cfg.DevContainerBackend {
@@ -39,9 +39,9 @@ func New(cfg config.Config, logger *slog.Logger) (ContainerClient, error) {
 				if err != nil {
 					return nil, err
 				}
-				logger.Info("using k8s container SP with OpenShift Routes", "url", cfg.ContainerSPURL, "route_namespace", cfg.Kubernetes.Namespace)
+				logger.Info("web exposure via OpenShift Route", "url", cfg.ContainerSPURL, "route_namespace", cfg.Kubernetes.Namespace)
 			} else {
-				logger.Info("using k8s container SP", "url", cfg.ContainerSPURL)
+				logger.Info("web exposure via external Service", "url", cfg.ContainerSPURL)
 			}
 			c, err := newHTTPClient(cfg.ContainerSPURL, cfg.StackDB, cfg.WebExposure, oroutes)
 			if err != nil {

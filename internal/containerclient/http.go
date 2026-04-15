@@ -21,11 +21,8 @@ type HTTPClient struct {
 	openShiftRoutes *openShiftRoutes
 }
 
-// NewHTTPClient creates an HTTP client for the given base URL (kubernetes exposure: external web Service).
-func NewHTTPClient(baseURL string, stackDBCfg config.StackDBCfg) (*HTTPClient, error) {
-	return newHTTPClient(baseURL, stackDBCfg, config.WebExposureKubernetes, nil)
-}
-
+// newHTTPClient creates an HTTPClient targeting the k8s container SP at baseURL.
+// Use exposure to select web tier ingress: OpenShift Route (with oroutes) or external Service.
 func newHTTPClient(baseURL string, stackDBCfg config.StackDBCfg, exposure string, oroutes *openShiftRoutes) (*HTTPClient, error) {
 	client, err := k8sclient.NewClientWithResponses(baseURL)
 	if err != nil {
@@ -266,17 +263,9 @@ func deleteContainerIDs(ctx context.Context, client *k8sclient.ClientWithRespons
 // or LoadBalancer external IP (kubernetes). Returns nil when unavailable.
 func (h *HTTPClient) GetWebEndpoint(ctx context.Context, stackID string) *string {
 	if h.webExposure == config.WebExposureOpenShift {
-		if h.openShiftRoutes == nil {
-			slog.WarnContext(ctx, "openshift web exposure but route client is nil; misconfiguration",
-				"stack_id", stackID)
-			return nil
-		}
 		u, err := h.openShiftRoutes.ensureWebRoute(ctx, stackID)
 		if err != nil {
 			slog.WarnContext(ctx, "ensure openshift web route", "stack_id", stackID, "err", err)
-			return nil
-		}
-		if u == nil {
 			return nil
 		}
 		return u

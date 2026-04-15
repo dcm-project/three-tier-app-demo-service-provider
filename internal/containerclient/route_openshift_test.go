@@ -1,81 +1,53 @@
 package containerclient
 
 import (
-	"testing"
-
 	routev1 "github.com/openshift/api/route/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-func TestRouteNameForStack(t *testing.T) {
-	t.Parallel()
-	if got, want := routeNameForStack("pet1"), "pet1-web"; got != want {
-		t.Errorf("routeNameForStack = %q, want %q", got, want)
-	}
-}
+var _ = Describe("OpenShift route helpers", func() {
+	Describe("routeNameForStack", func() {
+		It("returns stack id with -web suffix", func() {
+			Expect(routeNameForStack("pet1")).To(Equal("pet1-web"))
+		})
+	})
 
-func TestDesiredWebRoute(t *testing.T) {
-	t.Parallel()
-	stackID, ns := "myapp", "prod-ns"
-	r := desiredWebRoute(stackID, ns)
-	if r.Name != "myapp-web" {
-		t.Errorf("Name = %q, want myapp-web", r.Name)
-	}
-	if r.Namespace != ns {
-		t.Errorf("Namespace = %q, want %q", r.Namespace, ns)
-	}
-	if r.Spec.To.Kind != "Service" || r.Spec.To.Name != "myapp-web" {
-		t.Errorf("Spec.To = %+v, want Service myapp-web", r.Spec.To)
-	}
-	if r.Spec.Port == nil || r.Spec.Port.TargetPort != intstr.FromInt(80) {
-		t.Errorf("Spec.Port.TargetPort = %+v, want 80", r.Spec.Port)
-	}
-	if r.Spec.TLS == nil || r.Spec.TLS.Termination != routev1.TLSTerminationEdge {
-		t.Errorf("TLS edge termination missing: %+v", r.Spec.TLS)
-	}
-	if r.Labels["three-tier.stack"] != stackID {
-		t.Errorf("labels[three-tier.stack] = %q", r.Labels["three-tier.stack"])
-	}
-}
+	Describe("desiredWebRoute", func() {
+		It("builds edge TLS route to the web Service", func() {
+			stackID, ns := "myapp", "prod-ns"
+			r := desiredWebRoute(stackID, ns)
+			Expect(r.Name).To(Equal("myapp-web"))
+			Expect(r.Namespace).To(Equal(ns))
+			Expect(r.Spec.To.Kind).To(Equal("Service"))
+			Expect(r.Spec.To.Name).To(Equal("myapp-web"))
+			Expect(r.Spec.Port).NotTo(BeNil())
+			Expect(r.Spec.Port.TargetPort).To(Equal(intstr.FromInt(80)))
+			Expect(r.Spec.TLS).NotTo(BeNil())
+			Expect(r.Spec.TLS.Termination).To(Equal(routev1.TLSTerminationEdge))
+			Expect(r.Labels["three-tier.stack"]).To(Equal(stackID))
+		})
+	})
 
-func TestRoutePublicURL(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name string
-		r    *routev1.Route
-		want string
-	}{
-		{
-			name: "no ingress",
-			r:    &routev1.Route{},
-			want: "",
-		},
-		{
-			name: "https edge",
-			r: &routev1.Route{
+	Describe("routePublicURL", func() {
+		DescribeTable("derived URL",
+			func(r *routev1.Route, want string) {
+				Expect(routePublicURL(r)).To(Equal(want))
+			},
+			Entry("no ingress", &routev1.Route{}, ""),
+			Entry("https edge", &routev1.Route{
 				Spec: routev1.RouteSpec{TLS: &routev1.TLSConfig{}},
 				Status: routev1.RouteStatus{
 					Ingress: []routev1.RouteIngress{{Host: "pet.example.com"}},
 				},
-			},
-			want: "https://pet.example.com",
-		},
-		{
-			name: "http no TLS",
-			r: &routev1.Route{
+			}, "https://pet.example.com"),
+			Entry("http without TLS", &routev1.Route{
 				Status: routev1.RouteStatus{
 					Ingress: []routev1.RouteIngress{{Host: "plain.example.com"}},
 				},
-			},
-			want: "http://plain.example.com",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := routePublicURL(tt.r); got != tt.want {
-				t.Errorf("routePublicURL() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
+			}, "http://plain.example.com"),
+		)
+	})
+})

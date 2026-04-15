@@ -1,4 +1,4 @@
-package containerclient_test
+package containerclient
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 
 	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/config"
-	"github.com/dcm-project/3-tier-demo-service-provider/internal/containerclient"
 )
 
 func testStackDB() config.StackDBCfg {
@@ -24,14 +23,14 @@ func testStackDB() config.StackDBCfg {
 var _ = Describe("HTTPClient", func() {
 	var (
 		srv    *httptest.Server
-		client *containerclient.HTTPClient
+		client *HTTPClient
 		ctx    context.Context
 	)
 
 	BeforeEach(func() {
 		var err error
-		srv = containerclient.MockContainerServer()
-		client, err = containerclient.NewHTTPClient(srv.URL, testStackDB())
+		srv = MockContainerServer()
+		client, err = newHTTPClient(srv.URL, testStackDB(), config.WebExposureKubernetes, nil)
 		Expect(err).NotTo(HaveOccurred())
 		ctx = context.Background()
 	})
@@ -57,7 +56,7 @@ var _ = Describe("HTTPClient", func() {
 
 		It("returns ErrConflict when containers already exist", func() {
 			Expect(client.CreateContainers(ctx, "stack1", spec)).To(Succeed())
-			Expect(client.CreateContainers(ctx, "stack1", spec)).To(MatchError(containerclient.ErrConflict))
+			Expect(client.CreateContainers(ctx, "stack1", spec)).To(MatchError(ErrConflict))
 		})
 
 		It("includes k8s SP problem detail when create returns HTTP 400", func() {

@@ -2,20 +2,34 @@ package containerclient_test
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
+	"github.com/dcm-project/3-tier-demo-service-provider/internal/config"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/containerclient"
 	k8sapi "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 )
 
+// TestStatus runs all Ginkgo specs in this directory, including Describe blocks
+// in package containerclient (route helpers, HTTP visibility, etc.).
 func TestStatus(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Status Suite")
+	RunSpecs(t, "Container client Suite")
 }
+
+var _ = Describe("New", func() {
+	It("rejects invalid web exposure", func() {
+		_, err := containerclient.New(config.Config{
+			WebExposure: "bogus",
+		}, slog.Default())
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("SP_WEB_EXPOSURE"))
+	})
+})
 
 var _ = Describe("WorstStatusFromPodmanStates", func() {
 	It("returns RUNNING when all 3 containers are running", func() {
