@@ -4,7 +4,6 @@ package config
 
 import (
 	"fmt"
-	"strings"
 
 	env "github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
@@ -23,9 +22,9 @@ type Config struct {
 	ContainerSPURL      string `env:"CONTAINER_SP_URL"`
 	DevContainerBackend string `env:"DEV_CONTAINER_BACKEND"`
 	// WebExposure selects how the web tier is published: "kubernetes" (LoadBalancer/NodePort via k8s SP)
-	// or "openshift" (ClusterIP Service + OpenShift Route created by this SP). String values keep both
-	// paths explicit instead of a boolean flag. Default openshift uses Routes for the browser URL;
-	// use kubernetes for Kind, vanilla k8s, and CI that follow api-gateway Kind docs.
+	// or "openshift" (ClusterIP Service + OpenShift Route created by this SP). We keep both values so
+	// demos on OpenShift (default) stay simple while Kind / vanilla k8s / CI can run without Route APIs
+	// (see README). String beats a boolean so the two paths stay explicit.
 	WebExposure string `env:"SP_WEB_EXPOSURE" envDefault:"openshift"`
 	// Kubernetes uses the same env names as k8s-container-service-provider (SP_K8S_NAMESPACE, SP_K8S_KUBECONFIG).
 	// Namespace is where Services (and OpenShift Routes) live; default "default" matches that SP.
@@ -97,30 +96,10 @@ func Load() (Config, error) {
 	if err := env.Parse(&cfg); err != nil {
 		return Config{}, fmt.Errorf("loading config: %w", err)
 	}
-	if err := Prepare(&cfg); err != nil {
+	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
-}
-
-// Prepare applies trim/default normalization then [Config.Validate].
-// Use after env.Parse and before constructing runtime clients so rules live in
-// one place (ygalblum).
-func Prepare(c *Config) error {
-	normalize(c)
-	return c.Validate()
-}
-
-func normalize(c *Config) {
-	c.WebExposure = strings.TrimSpace(c.WebExposure)
-	if c.WebExposure == "" {
-		c.WebExposure = WebExposureOpenShift
-	}
-	c.Kubernetes.Namespace = strings.TrimSpace(c.Kubernetes.Namespace)
-	if c.Kubernetes.Namespace == "" {
-		// Same default namespace as k8s-container-service-provider (SP_K8S_NAMESPACE).
-		c.Kubernetes.Namespace = "default"
-	}
 }
 
 // Validate checks configuration values that env parsing alone does not constrain.
