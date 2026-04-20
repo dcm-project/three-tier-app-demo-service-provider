@@ -130,7 +130,7 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 		svc := service.New(newTestStore(), &containerclient.MockClient{}, reporter)
 		h := &handlers.Handlers{Svc: svc}
 		r := chi.NewRouter()
-		_ = server.HandlerFromMuxWithBaseURL(server.NewStrictHandler(h, nil), r, "/api/v1alpha1")
+		_ = server.HandlerFromMux(server.NewStrictHandler(h, nil), r)
 		srv = httptest.NewServer(r)
 	})
 
@@ -301,7 +301,7 @@ var _ = Describe("Handlers status consistency (configurable client)", func() {
 		svc := service.New(newTestStore(), client, reporter)
 		h := &handlers.Handlers{Svc: svc}
 		r := chi.NewRouter()
-		_ = server.HandlerFromMuxWithBaseURL(server.NewStrictHandler(h, nil), r, "/api/v1alpha1")
+		_ = server.HandlerFromMux(server.NewStrictHandler(h, nil), r)
 		srv = httptest.NewServer(r)
 	})
 

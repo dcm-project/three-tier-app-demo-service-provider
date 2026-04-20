@@ -18,20 +18,20 @@ import (
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Health Check
-	// (GET /health)
-	GetHealth(w http.ResponseWriter, r *http.Request)
 	// List Three-Tier Apps
-	// (GET /three-tier-apps)
+	// (GET /api/v1alpha1/three-tier-apps)
 	ListThreeTierApps(w http.ResponseWriter, r *http.Request, params ListThreeTierAppsParams)
 	// Create Three-Tier App
-	// (POST /three-tier-apps)
+	// (POST /api/v1alpha1/three-tier-apps)
 	CreateThreeTierApp(w http.ResponseWriter, r *http.Request, params CreateThreeTierAppParams)
+	// Health Check
+	// (GET /api/v1alpha1/three-tier-apps/health)
+	GetHealth(w http.ResponseWriter, r *http.Request)
 	// Delete Three-Tier App
-	// (DELETE /three-tier-apps/{threeTierAppId})
+	// (DELETE /api/v1alpha1/three-tier-apps/{threeTierAppId})
 	DeleteThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string)
 	// Get Three-Tier App
-	// (GET /three-tier-apps/{threeTierAppId})
+	// (GET /api/v1alpha1/three-tier-apps/{threeTierAppId})
 	GetThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string)
 }
 
@@ -39,32 +39,32 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
-// Health Check
-// (GET /health)
-func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
 // List Three-Tier Apps
-// (GET /three-tier-apps)
+// (GET /api/v1alpha1/three-tier-apps)
 func (_ Unimplemented) ListThreeTierApps(w http.ResponseWriter, r *http.Request, params ListThreeTierAppsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Create Three-Tier App
-// (POST /three-tier-apps)
+// (POST /api/v1alpha1/three-tier-apps)
 func (_ Unimplemented) CreateThreeTierApp(w http.ResponseWriter, r *http.Request, params CreateThreeTierAppParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Health Check
+// (GET /api/v1alpha1/three-tier-apps/health)
+func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Delete Three-Tier App
-// (DELETE /three-tier-apps/{threeTierAppId})
+// (DELETE /api/v1alpha1/three-tier-apps/{threeTierAppId})
 func (_ Unimplemented) DeleteThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Get Three-Tier App
-// (GET /three-tier-apps/{threeTierAppId})
+// (GET /api/v1alpha1/three-tier-apps/{threeTierAppId})
 func (_ Unimplemented) GetThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
@@ -77,20 +77,6 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
-
-// GetHealth operation middleware
-func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetHealth(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
 
 // ListThreeTierApps operation middleware
 func (siw *ServerInterfaceWrapper) ListThreeTierApps(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +131,20 @@ func (siw *ServerInterfaceWrapper) CreateThreeTierApp(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateThreeTierApp(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHealth operation middleware
+func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHealth(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -318,43 +318,22 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/health", wrapper.GetHealth)
+		r.Get(options.BaseURL+"/api/v1alpha1/three-tier-apps", wrapper.ListThreeTierApps)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/three-tier-apps", wrapper.ListThreeTierApps)
+		r.Post(options.BaseURL+"/api/v1alpha1/three-tier-apps", wrapper.CreateThreeTierApp)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/three-tier-apps", wrapper.CreateThreeTierApp)
+		r.Get(options.BaseURL+"/api/v1alpha1/three-tier-apps/health", wrapper.GetHealth)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/three-tier-apps/{threeTierAppId}", wrapper.DeleteThreeTierApp)
+		r.Delete(options.BaseURL+"/api/v1alpha1/three-tier-apps/{threeTierAppId}", wrapper.DeleteThreeTierApp)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/three-tier-apps/{threeTierAppId}", wrapper.GetThreeTierApp)
+		r.Get(options.BaseURL+"/api/v1alpha1/three-tier-apps/{threeTierAppId}", wrapper.GetThreeTierApp)
 	})
 
 	return r
-}
-
-type GetHealthRequestObject struct {
-}
-
-type GetHealthResponseObject interface {
-	VisitGetHealthResponse(w http.ResponseWriter) error
-}
-
-type GetHealth200JSONResponse Health
-
-func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
 }
 
 type ListThreeTierAppsRequestObject struct {
@@ -472,6 +451,27 @@ func (response CreateThreeTierApp500ApplicationProblemPlusJSONResponse) VisitCre
 	return err
 }
 
+type GetHealthRequestObject struct {
+}
+
+type GetHealthResponseObject interface {
+	VisitGetHealthResponse(w http.ResponseWriter) error
+}
+
+type GetHealth200JSONResponse Health
+
+func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteThreeTierAppRequestObject struct {
 	ThreeTierAppId string `json:"threeTierAppId"`
 }
@@ -568,20 +568,20 @@ func (response GetThreeTierApp500ApplicationProblemPlusJSONResponse) VisitGetThr
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-	// Health Check
-	// (GET /health)
-	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
 	// List Three-Tier Apps
-	// (GET /three-tier-apps)
+	// (GET /api/v1alpha1/three-tier-apps)
 	ListThreeTierApps(ctx context.Context, request ListThreeTierAppsRequestObject) (ListThreeTierAppsResponseObject, error)
 	// Create Three-Tier App
-	// (POST /three-tier-apps)
+	// (POST /api/v1alpha1/three-tier-apps)
 	CreateThreeTierApp(ctx context.Context, request CreateThreeTierAppRequestObject) (CreateThreeTierAppResponseObject, error)
+	// Health Check
+	// (GET /api/v1alpha1/three-tier-apps/health)
+	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
 	// Delete Three-Tier App
-	// (DELETE /three-tier-apps/{threeTierAppId})
+	// (DELETE /api/v1alpha1/three-tier-apps/{threeTierAppId})
 	DeleteThreeTierApp(ctx context.Context, request DeleteThreeTierAppRequestObject) (DeleteThreeTierAppResponseObject, error)
 	// Get Three-Tier App
-	// (GET /three-tier-apps/{threeTierAppId})
+	// (GET /api/v1alpha1/three-tier-apps/{threeTierAppId})
 	GetThreeTierApp(ctx context.Context, request GetThreeTierAppRequestObject) (GetThreeTierAppResponseObject, error)
 }
 
@@ -612,30 +612,6 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
-}
-
-// GetHealth operation middleware
-func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
-	var request GetHealthRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetHealth(ctx, request.(GetHealthRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetHealth")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
-		if err := validResponse.VisitGetHealthResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
 }
 
 // ListThreeTierApps operation middleware
@@ -690,6 +666,30 @@ func (sh *strictHandler) CreateThreeTierApp(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateThreeTierAppResponseObject); ok {
 		if err := validResponse.VisitCreateThreeTierAppResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetHealth operation middleware
+func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
+	var request GetHealthRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHealth(ctx, request.(GetHealthRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHealth")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
+		if err := validResponse.VisitGetHealthResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

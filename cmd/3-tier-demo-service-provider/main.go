@@ -73,7 +73,7 @@ func run() error {
 	h := &handlers.Handlers{Svc: svc}
 
 	r := chi.NewRouter()
-	_ = server.HandlerFromMuxWithBaseURL(server.NewStrictHandler(h, nil), r, "/api/v1alpha1")
+	_ = server.HandlerFromMux(server.NewStrictHandler(h, nil), r)
 
 	srv, err := apiserver.New(cfg.SVCAddress, r, logger)
 	if err != nil {

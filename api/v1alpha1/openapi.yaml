@@ -13,8 +13,8 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
 
 servers:
-  - url: /api/v1alpha1
-    description: API v1alpha1
+  - url: /
+    description: 3-Tier Demo Service Provider
 
 tags:
   - name: Health
@@ -23,7 +23,7 @@ tags:
     description: 3-tier app lifecycle
 
 paths:
-  /health:
+  /api/v1alpha1/three-tier-apps/health:
     get:
       summary: Health Check
       description: Returns the health status of the service
@@ -38,7 +38,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Health'
 
-  /three-tier-apps:
+  /api/v1alpha1/three-tier-apps:
     get:
       summary: List Three-Tier Apps
       description: List 3-tier demo apps with optional pagination
@@ -123,7 +123,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /three-tier-apps/{threeTierAppId}:
+  /api/v1alpha1/three-tier-apps/{threeTierAppId}:
     get:
       summary: Get Three-Tier App
       description: Get a 3-tier app by ID
