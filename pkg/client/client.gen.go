@@ -90,9 +90,6 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
-	// GetHealth request
-	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// ListThreeTierApps request
 	ListThreeTierApps(ctx context.Context, params *ListThreeTierAppsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -101,23 +98,14 @@ type ClientInterface interface {
 
 	CreateThreeTierApp(ctx context.Context, params *CreateThreeTierAppParams, body CreateThreeTierAppJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetHealth request
+	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeleteThreeTierApp request
 	DeleteThreeTierApp(ctx context.Context, threeTierAppId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetThreeTierApp request
 	GetThreeTierApp(ctx context.Context, threeTierAppId string, reqEditors ...RequestEditorFn) (*http.Response, error)
-}
-
-func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetHealthRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
 }
 
 func (c *Client) ListThreeTierApps(ctx context.Context, params *ListThreeTierAppsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -156,6 +144,18 @@ func (c *Client) CreateThreeTierApp(ctx context.Context, params *CreateThreeTier
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) DeleteThreeTierApp(ctx context.Context, threeTierAppId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteThreeTierAppRequest(c.Server, threeTierAppId)
 	if err != nil {
@@ -180,33 +180,6 @@ func (c *Client) GetThreeTierApp(ctx context.Context, threeTierAppId string, req
 	return c.Client.Do(req)
 }
 
-// NewGetHealthRequest generates requests for GetHealth
-func NewGetHealthRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/health")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 // NewListThreeTierAppsRequest generates requests for ListThreeTierApps
 func NewListThreeTierAppsRequest(server string, params *ListThreeTierAppsParams) (*http.Request, error) {
 	var err error
@@ -216,7 +189,7 @@ func NewListThreeTierAppsRequest(server string, params *ListThreeTierAppsParams)
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/three-tier-apps")
+	operationPath := fmt.Sprintf("/api/v1alpha1/three-tier-apps")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -292,7 +265,7 @@ func NewCreateThreeTierAppRequestWithBody(server string, params *CreateThreeTier
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/three-tier-apps")
+	operationPath := fmt.Sprintf("/api/v1alpha1/three-tier-apps")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -334,6 +307,33 @@ func NewCreateThreeTierAppRequestWithBody(server string, params *CreateThreeTier
 	return req, nil
 }
 
+// NewGetHealthRequest generates requests for GetHealth
+func NewGetHealthRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1alpha1/three-tier-apps/health")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDeleteThreeTierAppRequest generates requests for DeleteThreeTierApp
 func NewDeleteThreeTierAppRequest(server string, threeTierAppId string) (*http.Request, error) {
 	var err error
@@ -350,7 +350,7 @@ func NewDeleteThreeTierAppRequest(server string, threeTierAppId string) (*http.R
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/three-tier-apps/%s", pathParam0)
+	operationPath := fmt.Sprintf("/api/v1alpha1/three-tier-apps/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -384,7 +384,7 @@ func NewGetThreeTierAppRequest(server string, threeTierAppId string) (*http.Requ
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/three-tier-apps/%s", pathParam0)
+	operationPath := fmt.Sprintf("/api/v1alpha1/three-tier-apps/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -445,9 +445,6 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
-	// GetHealthWithResponse request
-	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
-
 	// ListThreeTierAppsWithResponse request
 	ListThreeTierAppsWithResponse(ctx context.Context, params *ListThreeTierAppsParams, reqEditors ...RequestEditorFn) (*ListThreeTierAppsResponse, error)
 
@@ -456,33 +453,14 @@ type ClientWithResponsesInterface interface {
 
 	CreateThreeTierAppWithResponse(ctx context.Context, params *CreateThreeTierAppParams, body CreateThreeTierAppJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateThreeTierAppResponse, error)
 
+	// GetHealthWithResponse request
+	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
+
 	// DeleteThreeTierAppWithResponse request
 	DeleteThreeTierAppWithResponse(ctx context.Context, threeTierAppId string, reqEditors ...RequestEditorFn) (*DeleteThreeTierAppResponse, error)
 
 	// GetThreeTierAppWithResponse request
 	GetThreeTierAppWithResponse(ctx context.Context, threeTierAppId string, reqEditors ...RequestEditorFn) (*GetThreeTierAppResponse, error)
-}
-
-type GetHealthResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *Health
-}
-
-// Status returns HTTPResponse.Status
-func (r GetHealthResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetHealthResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
 }
 
 type ListThreeTierAppsResponse struct {
@@ -528,6 +506,28 @@ func (r CreateThreeTierAppResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateThreeTierAppResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetHealthResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Health
+}
+
+// Status returns HTTPResponse.Status
+func (r GetHealthResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetHealthResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -581,15 +581,6 @@ func (r GetThreeTierAppResponse) StatusCode() int {
 	return 0
 }
 
-// GetHealthWithResponse request returning *GetHealthResponse
-func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error) {
-	rsp, err := c.GetHealth(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetHealthResponse(rsp)
-}
-
 // ListThreeTierAppsWithResponse request returning *ListThreeTierAppsResponse
 func (c *ClientWithResponses) ListThreeTierAppsWithResponse(ctx context.Context, params *ListThreeTierAppsParams, reqEditors ...RequestEditorFn) (*ListThreeTierAppsResponse, error) {
 	rsp, err := c.ListThreeTierApps(ctx, params, reqEditors...)
@@ -616,6 +607,15 @@ func (c *ClientWithResponses) CreateThreeTierAppWithResponse(ctx context.Context
 	return ParseCreateThreeTierAppResponse(rsp)
 }
 
+// GetHealthWithResponse request returning *GetHealthResponse
+func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error) {
+	rsp, err := c.GetHealth(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetHealthResponse(rsp)
+}
+
 // DeleteThreeTierAppWithResponse request returning *DeleteThreeTierAppResponse
 func (c *ClientWithResponses) DeleteThreeTierAppWithResponse(ctx context.Context, threeTierAppId string, reqEditors ...RequestEditorFn) (*DeleteThreeTierAppResponse, error) {
 	rsp, err := c.DeleteThreeTierApp(ctx, threeTierAppId, reqEditors...)
@@ -632,32 +632,6 @@ func (c *ClientWithResponses) GetThreeTierAppWithResponse(ctx context.Context, t
 		return nil, err
 	}
 	return ParseGetThreeTierAppResponse(rsp)
-}
-
-// ParseGetHealthResponse parses an HTTP response from a GetHealthWithResponse call
-func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetHealthResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Health
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	}
-
-	return response, nil
 }
 
 // ParseListThreeTierAppsResponse parses an HTTP response from a ListThreeTierAppsWithResponse call
@@ -741,6 +715,32 @@ func ParseCreateThreeTierAppResponse(rsp *http.Response) (*CreateThreeTierAppRes
 			return nil, err
 		}
 		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetHealthResponse parses an HTTP response from a GetHealthWithResponse call
+func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetHealthResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Health
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	}
 

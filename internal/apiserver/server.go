@@ -19,7 +19,7 @@ const (
 	readinessProbeTimeout  = 5 * time.Second
 	readinessProbeInterval = 50 * time.Millisecond
 	shutdownTimeout        = 10 * time.Second
-	healthPath             = "/api/v1alpha1/health"
+	healthPath             = "/api/v1alpha1/three-tier-apps/health"
 )
 
 // Server is the HTTP server for the 3-tier demo service provider.

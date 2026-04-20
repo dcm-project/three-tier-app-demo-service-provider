@@ -13,6 +13,7 @@ import (
 	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/api/server"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/service"
+	"github.com/google/uuid"
 )
 
 // Handlers implements server.StrictServerInterface.
@@ -67,19 +68,28 @@ func (h *Handlers) ListThreeTierApps(ctx context.Context, req server.ListThreeTi
 func (h *Handlers) CreateThreeTierApp(ctx context.Context, req server.CreateThreeTierAppRequestObject) (server.CreateThreeTierAppResponseObject, error) {
 	body := req.Body
 
-	if !idPattern.MatchString(body.Metadata.Name) {
+	hasQueryID := req.Params.Id != nil && *req.Params.Id != ""
+	hasMetaName := body.Metadata != nil && body.Metadata.Name != ""
+
+	if hasMetaName && !idPattern.MatchString(body.Metadata.Name) {
 		return server.CreateThreeTierApp400ApplicationProblemPlusJSONResponse(
 			errBody("Invalid name", "metadata.name must match "+idPattern.String()),
 		), nil
 	}
-	id := body.Metadata.Name
-	if req.Params.Id != nil && *req.Params.Id != "" {
-		if !idPattern.MatchString(*req.Params.Id) {
-			return server.CreateThreeTierApp400ApplicationProblemPlusJSONResponse(
-				errBody("Invalid id", "id must match "+idPattern.String()),
-			), nil
-		}
+	if hasQueryID && !idPattern.MatchString(*req.Params.Id) {
+		return server.CreateThreeTierApp400ApplicationProblemPlusJSONResponse(
+			errBody("Invalid id", "id must match "+idPattern.String()),
+		), nil
+	}
+
+	var id string
+	switch {
+	case hasQueryID:
 		id = *req.Params.Id
+	case hasMetaName:
+		id = body.Metadata.Name
+	default:
+		id = uuid.New().String()
 	}
 
 	app, err := h.Svc.Create(ctx, id, body.Spec)

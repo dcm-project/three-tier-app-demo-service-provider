@@ -13,8 +13,8 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
 
 servers:
-  - url: /api/v1alpha1
-    description: API v1alpha1
+  - url: /
+    description: 3-Tier Demo Service Provider
 
 tags:
   - name: Health
@@ -23,7 +23,7 @@ tags:
     description: 3-tier app lifecycle
 
 paths:
-  /health:
+  /api/v1alpha1/three-tier-apps/health:
     get:
       summary: Health Check
       description: Returns the health status of the service
@@ -38,7 +38,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Health'
 
-  /three-tier-apps:
+  /api/v1alpha1/three-tier-apps:
     get:
       summary: List Three-Tier Apps
       description: List 3-tier demo apps with optional pagination
@@ -87,10 +87,22 @@ paths:
       parameters:
         - name: id
           in: query
-          description: Optional app ID for idempotent creation
+          description: |
+            Optional client-specified ID for the three-tier app. If not provided,
+            the server will generate a UUID. When both metadata.name and id are set,
+            id is the stored instance id.
+
+            Requirements (per AEP-122):
+            - 1-63 characters long
+            - Start with a lowercase letter or digit
+            - Contain only lowercase letters, numbers, and hyphens
+            - End with letter or number
+          required: false
           schema:
             type: string
             pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+            minLength: 1
+            maxLength: 63
       requestBody:
         required: true
         content:
@@ -123,7 +135,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /three-tier-apps/{threeTierAppId}:
+  /api/v1alpha1/three-tier-apps/{threeTierAppId}:
     get:
       summary: Get Three-Tier App
       description: Get a 3-tier app by ID
@@ -218,7 +230,7 @@ components:
 
     ThreeTierApp:
       type: object
-      description: A 3-tier demo app (web, app, db)
+      description: 3-tier app (web, app, db). Create requires spec; id from query param, metadata.name, or server UUID.
       x-aep-resource:
         type: three-tier-demo-sp.dcm.io/three-tier-app
         singular: three-tier-app
@@ -226,7 +238,6 @@ components:
         patterns:
           - three-tier-apps/{three_tier_app_id}
       required:
-        - metadata
         - spec
       properties:
         id:

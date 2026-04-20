@@ -125,13 +125,13 @@ type Health struct {
 	Type  *string `json:"type,omitempty"`
 }
 
-// ThreeTierApp A 3-tier demo app (web, app, db)
+// ThreeTierApp 3-tier app (web, app, db). Create requires spec; id from query param, metadata.name, or server UUID.
 type ThreeTierApp struct {
 	CreateTime *time.Time `json:"create_time,omitempty"`
 
 	// Id Unique app ID (server-generated from metadata.name)
-	Id       *string              `json:"id,omitempty"`
-	Metadata ThreeTierAppMetadata `json:"metadata"`
+	Id       *string               `json:"id,omitempty"`
+	Metadata *ThreeTierAppMetadata `json:"metadata,omitempty"`
 
 	// Path Resource path (server-generated)
 	Path          *string                 `json:"path,omitempty"`
@@ -202,7 +202,15 @@ type ListThreeTierAppsParams struct {
 
 // CreateThreeTierAppParams defines parameters for CreateThreeTierApp.
 type CreateThreeTierAppParams struct {
-	// Id Optional app ID for idempotent creation
+	// Id Optional client-specified ID for the three-tier app. If not provided,
+	// the server will generate a UUID. When both metadata.name and id are set,
+	// id is the stored instance id.
+	//
+	// Requirements (per AEP-122):
+	// - 1-63 characters long
+	// - Start with a lowercase letter or digit
+	// - Contain only lowercase letters, numbers, and hyphens
+	// - End with letter or number
 	Id *string `form:"id,omitempty" json:"id,omitempty"`
 }
 

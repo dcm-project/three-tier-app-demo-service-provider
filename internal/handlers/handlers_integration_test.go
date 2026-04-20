@@ -130,7 +130,7 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 		svc := service.New(newTestStore(), &containerclient.MockClient{}, reporter)
 		h := &handlers.Handlers{Svc: svc}
 		r := chi.NewRouter()
-		_ = server.HandlerFromMuxWithBaseURL(server.NewStrictHandler(h, nil), r, "/api/v1alpha1")
+		_ = server.HandlerFromMux(server.NewStrictHandler(h, nil), r)
 		srv = httptest.NewServer(r)
 	})
 
@@ -142,7 +142,7 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 
 	It("accepts database engine+version (Pet Clinic catalog), SP derives OCI image", func() {
 		req := v1alpha1.ThreeTierApp{
-			Metadata: v1alpha1.ThreeTierAppMetadata{Name: "db-engine-version-stack"},
+			Metadata: &v1alpha1.ThreeTierAppMetadata{Name: "db-engine-version-stack"},
 			Spec: v1alpha1.ThreeTierSpec{
 				Database: v1alpha1.DatabaseTierSpec{Engine: "mysql", Version: "8"},
 				App:      v1alpha1.AppTierSpec{Image: "app:latest"},
@@ -160,9 +160,47 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 		Expect(stack.Spec.Database.Version).To(Equal("8"))
 	})
 
+	It("accepts spec-only body with id query (SPRM create contract)", func() {
+		req := v1alpha1.ThreeTierApp{
+			Spec: v1alpha1.ThreeTierSpec{
+				Database: v1alpha1.DatabaseTierSpec{Engine: "postgres", Version: "16"},
+				App:      v1alpha1.AppTierSpec{Image: "app:latest"},
+				Web:      v1alpha1.WebTierSpec{Image: "nginx:alpine"},
+			},
+		}
+		body, _ := json.Marshal(req)
+		u := srv.URL + "/api/v1alpha1/three-tier-apps?id=sprm-spec-only-stack"
+		resp, err := http.Post(u, "application/json", bytes.NewReader(body))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusCreated))
+		var stack v1alpha1.ThreeTierApp
+		Expect(json.NewDecoder(resp.Body).Decode(&stack)).To(Succeed())
+		_ = resp.Body.Close()
+		Expect(stack.Id).To(HaveValue(Equal("sprm-spec-only-stack")))
+	})
+
+	It("generates an id when spec-only and no id query (optional id, AEP-style)", func() {
+		req := v1alpha1.ThreeTierApp{
+			Spec: v1alpha1.ThreeTierSpec{
+				Database: v1alpha1.DatabaseTierSpec{Engine: "postgres", Version: "16"},
+				App:      v1alpha1.AppTierSpec{Image: "app:latest"},
+				Web:      v1alpha1.WebTierSpec{Image: "nginx:alpine"},
+			},
+		}
+		body, _ := json.Marshal(req)
+		resp, err := http.Post(srv.URL+"/api/v1alpha1/three-tier-apps", "application/json", bytes.NewReader(body))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusCreated))
+		var stack v1alpha1.ThreeTierApp
+		Expect(json.NewDecoder(resp.Body).Decode(&stack)).To(Succeed())
+		_ = resp.Body.Close()
+		Expect(stack.Id).NotTo(BeNil())
+		Expect(*stack.Id).To(MatchRegexp(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`))
+	})
+
 	It("returns status PENDING on create (provisioning is async)", func() {
 		req := v1alpha1.ThreeTierApp{
-			Metadata: v1alpha1.ThreeTierAppMetadata{Name: "test-stack"},
+			Metadata: &v1alpha1.ThreeTierAppMetadata{Name: "test-stack"},
 			Spec: v1alpha1.ThreeTierSpec{
 				Database: v1alpha1.DatabaseTierSpec{Engine: "postgres", Version: "16"},
 				App:      v1alpha1.AppTierSpec{Image: "app:latest"},
@@ -186,7 +224,7 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 
 	It("returns live container status on GET", func() {
 		req := v1alpha1.ThreeTierApp{
-			Metadata: v1alpha1.ThreeTierAppMetadata{Name: "get-status-stack"},
+			Metadata: &v1alpha1.ThreeTierAppMetadata{Name: "get-status-stack"},
 			Spec: v1alpha1.ThreeTierSpec{
 				Database: v1alpha1.DatabaseTierSpec{Engine: "postgres", Version: "16"},
 				App:      v1alpha1.AppTierSpec{Image: "app:latest"},
@@ -219,7 +257,7 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 
 	It("deletes a 3-tier app (no status event published)", func() {
 		req := v1alpha1.ThreeTierApp{
-			Metadata: v1alpha1.ThreeTierAppMetadata{Name: "del-stack"},
+			Metadata: &v1alpha1.ThreeTierAppMetadata{Name: "del-stack"},
 			Spec: v1alpha1.ThreeTierSpec{
 				Database: v1alpha1.DatabaseTierSpec{Engine: "postgres", Version: "16"},
 				App:      v1alpha1.AppTierSpec{Image: "app:latest"},
@@ -253,7 +291,7 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 
 	It("returns status from MockClient on List", func() {
 		req := v1alpha1.ThreeTierApp{
-			Metadata: v1alpha1.ThreeTierAppMetadata{Name: "list-stack"},
+			Metadata: &v1alpha1.ThreeTierAppMetadata{Name: "list-stack"},
 			Spec: v1alpha1.ThreeTierSpec{
 				Database: v1alpha1.DatabaseTierSpec{Engine: "postgres", Version: "16"},
 				App:      v1alpha1.AppTierSpec{Image: "app:latest"},
@@ -301,7 +339,7 @@ var _ = Describe("Handlers status consistency (configurable client)", func() {
 		svc := service.New(newTestStore(), client, reporter)
 		h := &handlers.Handlers{Svc: svc}
 		r := chi.NewRouter()
-		_ = server.HandlerFromMuxWithBaseURL(server.NewStrictHandler(h, nil), r, "/api/v1alpha1")
+		_ = server.HandlerFromMux(server.NewStrictHandler(h, nil), r)
 		srv = httptest.NewServer(r)
 	})
 
@@ -313,7 +351,7 @@ var _ = Describe("Handlers status consistency (configurable client)", func() {
 
 	It("returns FAILED when container status is FAILED", func() {
 		req := v1alpha1.ThreeTierApp{
-			Metadata: v1alpha1.ThreeTierAppMetadata{Name: "fail-stack"},
+			Metadata: &v1alpha1.ThreeTierAppMetadata{Name: "fail-stack"},
 			Spec: v1alpha1.ThreeTierSpec{
 				Database: v1alpha1.DatabaseTierSpec{Engine: "postgres", Version: "16"},
 				App:      v1alpha1.AppTierSpec{Image: "app:latest"},
@@ -357,7 +395,7 @@ var _ = Describe("Handlers status consistency (configurable client)", func() {
 
 	It("returns PENDING when container status is PENDING", func() {
 		req := v1alpha1.ThreeTierApp{
-			Metadata: v1alpha1.ThreeTierAppMetadata{Name: "pending-stack"},
+			Metadata: &v1alpha1.ThreeTierAppMetadata{Name: "pending-stack"},
 			Spec: v1alpha1.ThreeTierSpec{
 				Database: v1alpha1.DatabaseTierSpec{Engine: "postgres", Version: "16"},
 				App:      v1alpha1.AppTierSpec{Image: "app:latest"},
