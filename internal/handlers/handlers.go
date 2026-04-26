@@ -60,7 +60,7 @@ func (h *Handlers) ListThreeTierApps(ctx context.Context, req server.ListThreeTi
 		nextToken = &t
 	}
 	return server.ListThreeTierApps200JSONResponse(v1alpha1.ThreeTierAppList{
-		ThreeTierApps: &list,
+		Results:       &list,
 		NextPageToken: nextToken,
 	}), nil
 }
@@ -119,6 +119,27 @@ func (h *Handlers) GetThreeTierApp(ctx context.Context, req server.GetThreeTierA
 		), nil
 	}
 	return server.GetThreeTierApp200JSONResponse(app), nil
+}
+
+func (h *Handlers) UpdateThreeTierApp(ctx context.Context, req server.UpdateThreeTierAppRequestObject) (server.UpdateThreeTierAppResponseObject, error) {
+	if req.Body == nil {
+		return server.UpdateThreeTierApp400ApplicationProblemPlusJSONResponse(
+			errBody("Bad request", "request body is required"),
+		), nil
+	}
+
+	app, err := h.Svc.Patch(ctx, req.ThreeTierAppId, *req.Body)
+	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			return server.UpdateThreeTierApp404ApplicationProblemPlusJSONResponse(
+				errBody("Not found", "3-tier app not found"),
+			), nil
+		}
+		return server.UpdateThreeTierApp500ApplicationProblemPlusJSONResponse(
+			errBody("Update failed", err.Error()),
+		), nil
+	}
+	return server.UpdateThreeTierApp200JSONResponse(app), nil
 }
 
 func (h *Handlers) DeleteThreeTierApp(ctx context.Context, req server.DeleteThreeTierAppRequestObject) (server.DeleteThreeTierAppResponseObject, error) {

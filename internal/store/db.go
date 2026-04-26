@@ -136,10 +136,11 @@ func (s *gormStore) Update(ctx context.Context, app v1alpha1.ThreeTierApp) (v1al
 	result := s.db.WithContext(ctx).
 		Model(&ThreeTierAppRecord{}).
 		Where("id = ?", *app.Id).
-		Select("status", "web_endpoint").
+		Select("status", "web_endpoint", "spec_json").
 		Updates(&ThreeTierAppRecord{
 			Status:      status,
 			WebEndpoint: webEndpoint,
+			Spec:        app.Spec,
 		})
 	if result.Error != nil {
 		return app, fmt.Errorf("update: %w", result.Error)

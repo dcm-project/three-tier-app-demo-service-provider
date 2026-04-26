@@ -119,6 +119,57 @@ func (s *ThreeTierAppService) provision(ctx context.Context, id string, spec v1a
 	}
 }
 
+// Patch applies merge-patch semantics: non-nil fields from the patch override
+// the existing resource. Server-managed fields (id, path, status, create_time)
+// are preserved. Returns ErrNotFound when the app does not exist.
+func (s *ThreeTierAppService) Patch(ctx context.Context, id string, patch v1alpha1.ThreeTierApp) (v1alpha1.ThreeTierApp, error) {
+	existing, ok := s.store.Get(ctx, id)
+	if !ok {
+		return v1alpha1.ThreeTierApp{}, ErrNotFound
+	}
+
+	merged := existing
+	if patch.Spec.Database.Engine != "" {
+		merged.Spec.Database.Engine = patch.Spec.Database.Engine
+	}
+	if patch.Spec.Database.Version != "" {
+		merged.Spec.Database.Version = patch.Spec.Database.Version
+	}
+	if patch.Spec.Database.Network != nil {
+		merged.Spec.Database.Network = patch.Spec.Database.Network
+	}
+	if patch.Spec.App.Image != "" {
+		merged.Spec.App.Image = patch.Spec.App.Image
+	}
+	if patch.Spec.App.HttpPort != nil {
+		merged.Spec.App.HttpPort = patch.Spec.App.HttpPort
+	}
+	if patch.Spec.App.Network != nil {
+		merged.Spec.App.Network = patch.Spec.App.Network
+	}
+	if patch.Spec.Web.Image != "" {
+		merged.Spec.Web.Image = patch.Spec.Web.Image
+	}
+	if patch.Spec.Web.Network != nil {
+		merged.Spec.Web.Network = patch.Spec.Web.Network
+	}
+	if patch.Metadata != nil {
+		merged.Metadata = patch.Metadata
+	}
+	if patch.ServiceType != nil {
+		merged.ServiceType = patch.ServiceType
+	}
+	if patch.ProviderHints != nil {
+		merged.ProviderHints = patch.ProviderHints
+	}
+
+	updated, err := s.store.Update(ctx, merged)
+	if err != nil {
+		return v1alpha1.ThreeTierApp{}, fmt.Errorf("store update: %w", err)
+	}
+	return updated, nil
+}
+
 // Get returns the stored app with its live container status refreshed.
 // Returns ErrNotFound when the app does not exist.
 func (s *ThreeTierAppService) Get(ctx context.Context, id string) (v1alpha1.ThreeTierApp, error) {

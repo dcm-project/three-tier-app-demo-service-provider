@@ -289,6 +289,69 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 		Expect(reporter.getDeletedCalls()).To(BeEmpty())
 	})
 
+	It("updates spec via PATCH (AEP-134 merge-patch)", func() {
+		req := v1alpha1.ThreeTierApp{
+			Metadata: &v1alpha1.ThreeTierAppMetadata{Name: "patch-stack"},
+			Spec: v1alpha1.ThreeTierSpec{
+				Database: v1alpha1.DatabaseTierSpec{Engine: "postgres", Version: "16"},
+				App:      v1alpha1.AppTierSpec{Image: "app:v1"},
+				Web:      v1alpha1.WebTierSpec{Image: "nginx:alpine"},
+			},
+		}
+		body, _ := json.Marshal(req)
+		postResp, err := http.Post(srv.URL+"/api/v1alpha1/three-tier-apps", "application/json", bytes.NewReader(body))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(postResp.StatusCode).To(Equal(http.StatusCreated))
+		_ = postResp.Body.Close()
+
+		Eventually(func() int {
+			resp, err := http.Get(srv.URL + "/api/v1alpha1/three-tier-apps/patch-stack")
+			if err != nil || resp == nil {
+				return 0
+			}
+			code := resp.StatusCode
+			_ = resp.Body.Close()
+			return code
+		}, "15s", "25ms").Should(Equal(http.StatusOK))
+
+		patch := v1alpha1.ThreeTierApp{
+			Spec: v1alpha1.ThreeTierSpec{
+				Database: v1alpha1.DatabaseTierSpec{Engine: "postgres", Version: "16"},
+				App:      v1alpha1.AppTierSpec{Image: "app:v2"},
+				Web:      v1alpha1.WebTierSpec{Image: "nginx:alpine"},
+			},
+		}
+		patchBody, _ := json.Marshal(patch)
+		patchReq, _ := http.NewRequest(http.MethodPatch, srv.URL+"/api/v1alpha1/three-tier-apps/patch-stack", bytes.NewReader(patchBody))
+		patchReq.Header.Set("Content-Type", "application/merge-patch+json")
+		resp, err := http.DefaultClient.Do(patchReq)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		var updated v1alpha1.ThreeTierApp
+		Expect(json.NewDecoder(resp.Body).Decode(&updated)).To(Succeed())
+		_ = resp.Body.Close()
+		Expect(updated.Spec.App.Image).To(Equal("app:v2"))
+		Expect(updated.Id).To(HaveValue(Equal("patch-stack")))
+	})
+
+	It("returns 404 on PATCH for nonexistent app", func() {
+		patch := v1alpha1.ThreeTierApp{
+			Spec: v1alpha1.ThreeTierSpec{
+				Database: v1alpha1.DatabaseTierSpec{Engine: "postgres", Version: "16"},
+				App:      v1alpha1.AppTierSpec{Image: "app:v2"},
+				Web:      v1alpha1.WebTierSpec{Image: "nginx:alpine"},
+			},
+		}
+		body, _ := json.Marshal(patch)
+		patchReq, _ := http.NewRequest(http.MethodPatch, srv.URL+"/api/v1alpha1/three-tier-apps/no-such-app", bytes.NewReader(body))
+		patchReq.Header.Set("Content-Type", "application/merge-patch+json")
+		resp, err := http.DefaultClient.Do(patchReq)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
+		_ = resp.Body.Close()
+	})
+
 	It("returns status from MockClient on List", func() {
 		req := v1alpha1.ThreeTierApp{
 			Metadata: &v1alpha1.ThreeTierAppMetadata{Name: "list-stack"},
@@ -313,10 +376,10 @@ var _ = Describe("Handlers with MockClient and status reporting", func() {
 			defer resp.Body.Close()
 			var list v1alpha1.ThreeTierAppList
 			if err := json.NewDecoder(resp.Body).Decode(&list); err != nil ||
-				list.ThreeTierApps == nil {
+				list.Results == nil {
 				return v1alpha1.PENDING
 			}
-			for _, a := range *list.ThreeTierApps {
+			for _, a := range *list.Results {
 				if a.Id != nil && *a.Id == "list-stack" && a.Status != nil {
 					return *a.Status
 				}
