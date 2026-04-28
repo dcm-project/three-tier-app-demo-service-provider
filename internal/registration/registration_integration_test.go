@@ -135,7 +135,7 @@ var _ = Describe("Registration Integration", func() {
 			"expected registration request but none was received")
 
 		Expect(receivedPayload.Name).To(Equal("3tier-sp"))
-		Expect(receivedPayload.ServiceType).To(Equal("three_tier_app_demo"))
+		Expect(receivedPayload.ServiceType).To(Equal("three-tier-app-demo"))
 		Expect(receivedPayload.DisplayName).To(HaveValue(Equal("Three Tier SP")))
 		Expect(receivedPayload.Endpoint).To(ContainSubstring("https://sp.example.com"))
 		Expect(receivedPayload.Endpoint).To(ContainSubstring("/three-tier-apps"))

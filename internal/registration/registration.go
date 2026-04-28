@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	serviceType   = "three_tier_app_demo"
+	serviceType   = "three-tier-app-demo"
 	schemaVersion = "v1alpha1"
 	httpTimeout   = 30 * time.Second
 )
