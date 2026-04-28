@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/caarlos0/env/v11 v11.4.0
-	github.com/dcm-project/k8s-container-service-provider v0.0.0-20260408180852-b572512abc0d
+	github.com/dcm-project/k8s-container-service-provider v0.1.0-rc.1.0.20260428135537-585d623702f1
 	github.com/dcm-project/service-provider-manager v0.0.0-20260410150915-2a9a460f4345
 	github.com/getkin/kin-openapi v0.134.0
 	github.com/go-chi/chi/v5 v5.2.5

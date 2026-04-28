@@ -21,6 +21,15 @@ type HTTPClient struct {
 	openShiftRoutes *openShiftRoutes
 }
 
+const (
+	// k8sGenerateNameSuffixLen is "-" + 5 random chars added by apiserver.
+	k8sGenerateNameSuffixLen = 6
+	// k8sNameMaxLen is DNS label max length for Service names.
+	k8sNameMaxLen = 63
+	// metadata.name must leave room for GenerateName suffix on the k8s SP side.
+	k8sContainerMetadataNameMaxLen = k8sNameMaxLen - k8sGenerateNameSuffixLen
+)
+
 // newHTTPClient creates an HTTPClient targeting the k8s container SP at baseURL.
 // Use exposure to select web tier ingress: OpenShift Route (with oroutes) or external Service.
 func newHTTPClient(baseURL string, stackDBCfg config.StackDBCfg, exposure string, oroutes *openShiftRoutes) (*HTTPClient, error) {
@@ -191,10 +200,21 @@ func (h *HTTPClient) CreateContainers(ctx context.Context, stackID string, spec 
 	ids := make([]string, 0, len(tiers))
 	for _, t := range tiers {
 		ports := t.ports
+		// metadataName must include stackID, not just t.name ("db"/"app"/"web").
+		// t.name is only the tier role; it is identical for every provisioned stack.
+		// Using it alone would make Deployment/Service names collide when two catalog
+		// instances (or any two stacks) run in the same namespace. stackID is the
+		// per-stack id from SPRM (e.g. placement resource UUID), so tier+stackID stays unique.
+		metadataName := t.name + "-" + stackID
+		// k8s SP turns this into GenerateName (<metadataName>- + random suffix),
+		// so keep a 6-char budget and avoid a trailing '-' after truncation.
+		if len(metadataName) > k8sContainerMetadataNameMaxLen {
+			metadataName = strings.TrimRight(metadataName[:k8sContainerMetadataNameMaxLen], "-")
+		}
 		body := k8sapi.Container{
 			Spec: k8sapi.ContainerSpec{
 				ServiceType: k8sapi.ContainerSpecServiceTypeContainer,
-				Metadata:    k8sapi.ContainerMetadata{Name: t.id},
+				Metadata:    k8sapi.ContainerMetadata{Name: metadataName},
 				Image:       k8sapi.ContainerImage{Reference: t.image},
 				Resources:   t.res,
 				Network:     &k8sapi.ContainerNetwork{Ports: &ports},
