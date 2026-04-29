@@ -106,6 +106,11 @@ type ClientInterface interface {
 
 	// GetThreeTierApp request
 	GetThreeTierApp(ctx context.Context, threeTierAppId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateThreeTierAppWithBody request with any body
+	UpdateThreeTierAppWithBody(ctx context.Context, threeTierAppId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateThreeTierAppWithApplicationMergePatchPlusJSONBody(ctx context.Context, threeTierAppId string, body UpdateThreeTierAppApplicationMergePatchPlusJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) ListThreeTierApps(ctx context.Context, params *ListThreeTierAppsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -170,6 +175,30 @@ func (c *Client) DeleteThreeTierApp(ctx context.Context, threeTierAppId string, 
 
 func (c *Client) GetThreeTierApp(ctx context.Context, threeTierAppId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetThreeTierAppRequest(c.Server, threeTierAppId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateThreeTierAppWithBody(ctx context.Context, threeTierAppId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateThreeTierAppRequestWithBody(c.Server, threeTierAppId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateThreeTierAppWithApplicationMergePatchPlusJSONBody(ctx context.Context, threeTierAppId string, body UpdateThreeTierAppApplicationMergePatchPlusJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateThreeTierAppRequestWithApplicationMergePatchPlusJSONBody(c.Server, threeTierAppId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -402,6 +431,53 @@ func NewGetThreeTierAppRequest(server string, threeTierAppId string) (*http.Requ
 	return req, nil
 }
 
+// NewUpdateThreeTierAppRequestWithApplicationMergePatchPlusJSONBody calls the generic UpdateThreeTierApp builder with application/merge-patch+json body
+func NewUpdateThreeTierAppRequestWithApplicationMergePatchPlusJSONBody(server string, threeTierAppId string, body UpdateThreeTierAppApplicationMergePatchPlusJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateThreeTierAppRequestWithBody(server, threeTierAppId, "application/merge-patch+json", bodyReader)
+}
+
+// NewUpdateThreeTierAppRequestWithBody generates requests for UpdateThreeTierApp with any type of body
+func NewUpdateThreeTierAppRequestWithBody(server string, threeTierAppId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "threeTierAppId", threeTierAppId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1alpha1/three-tier-apps/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -461,6 +537,11 @@ type ClientWithResponsesInterface interface {
 
 	// GetThreeTierAppWithResponse request
 	GetThreeTierAppWithResponse(ctx context.Context, threeTierAppId string, reqEditors ...RequestEditorFn) (*GetThreeTierAppResponse, error)
+
+	// UpdateThreeTierAppWithBodyWithResponse request with any body
+	UpdateThreeTierAppWithBodyWithResponse(ctx context.Context, threeTierAppId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateThreeTierAppResponse, error)
+
+	UpdateThreeTierAppWithApplicationMergePatchPlusJSONBodyWithResponse(ctx context.Context, threeTierAppId string, body UpdateThreeTierAppApplicationMergePatchPlusJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateThreeTierAppResponse, error)
 }
 
 type ListThreeTierAppsResponse struct {
@@ -581,6 +662,31 @@ func (r GetThreeTierAppResponse) StatusCode() int {
 	return 0
 }
 
+type UpdateThreeTierAppResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *ThreeTierApp
+	ApplicationproblemJSON400 *Error
+	ApplicationproblemJSON404 *Error
+	ApplicationproblemJSON500 *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateThreeTierAppResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateThreeTierAppResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 // ListThreeTierAppsWithResponse request returning *ListThreeTierAppsResponse
 func (c *ClientWithResponses) ListThreeTierAppsWithResponse(ctx context.Context, params *ListThreeTierAppsParams, reqEditors ...RequestEditorFn) (*ListThreeTierAppsResponse, error) {
 	rsp, err := c.ListThreeTierApps(ctx, params, reqEditors...)
@@ -632,6 +738,23 @@ func (c *ClientWithResponses) GetThreeTierAppWithResponse(ctx context.Context, t
 		return nil, err
 	}
 	return ParseGetThreeTierAppResponse(rsp)
+}
+
+// UpdateThreeTierAppWithBodyWithResponse request with arbitrary body returning *UpdateThreeTierAppResponse
+func (c *ClientWithResponses) UpdateThreeTierAppWithBodyWithResponse(ctx context.Context, threeTierAppId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateThreeTierAppResponse, error) {
+	rsp, err := c.UpdateThreeTierAppWithBody(ctx, threeTierAppId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateThreeTierAppResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateThreeTierAppWithApplicationMergePatchPlusJSONBodyWithResponse(ctx context.Context, threeTierAppId string, body UpdateThreeTierAppApplicationMergePatchPlusJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateThreeTierAppResponse, error) {
+	rsp, err := c.UpdateThreeTierAppWithApplicationMergePatchPlusJSONBody(ctx, threeTierAppId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateThreeTierAppResponse(rsp)
 }
 
 // ParseListThreeTierAppsResponse parses an HTTP response from a ListThreeTierAppsWithResponse call
@@ -800,6 +923,53 @@ func ParseGetThreeTierAppResponse(rsp *http.Response) (*GetThreeTierAppResponse,
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateThreeTierAppResponse parses an HTTP response from a UpdateThreeTierAppWithResponse call
+func ParseUpdateThreeTierAppResponse(rsp *http.Response) (*UpdateThreeTierAppResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateThreeTierAppResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ThreeTierApp
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest Error

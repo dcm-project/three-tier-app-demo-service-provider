@@ -33,6 +33,9 @@ type ServerInterface interface {
 	// Get Three-Tier App
 	// (GET /api/v1alpha1/three-tier-apps/{threeTierAppId})
 	GetThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string)
+	// Update Three-Tier App
+	// (PATCH /api/v1alpha1/three-tier-apps/{threeTierAppId})
+	UpdateThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -66,6 +69,12 @@ func (_ Unimplemented) DeleteThreeTierApp(w http.ResponseWriter, r *http.Request
 // Get Three-Tier App
 // (GET /api/v1alpha1/three-tier-apps/{threeTierAppId})
 func (_ Unimplemented) GetThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update Three-Tier App
+// (PATCH /api/v1alpha1/three-tier-apps/{threeTierAppId})
+func (_ Unimplemented) UpdateThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -204,6 +213,31 @@ func (siw *ServerInterfaceWrapper) GetThreeTierApp(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateThreeTierApp operation middleware
+func (siw *ServerInterfaceWrapper) UpdateThreeTierApp(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "threeTierAppId" -------------
+	var threeTierAppId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "threeTierAppId", chi.URLParam(r, "threeTierAppId"), &threeTierAppId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "threeTierAppId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateThreeTierApp(w, r, threeTierAppId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -331,6 +365,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1alpha1/three-tier-apps/{threeTierAppId}", wrapper.GetThreeTierApp)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1alpha1/three-tier-apps/{threeTierAppId}", wrapper.UpdateThreeTierApp)
 	})
 
 	return r
@@ -566,6 +603,71 @@ func (response GetThreeTierApp500ApplicationProblemPlusJSONResponse) VisitGetThr
 	return err
 }
 
+type UpdateThreeTierAppRequestObject struct {
+	ThreeTierAppId string `json:"threeTierAppId"`
+	Body           *UpdateThreeTierAppApplicationMergePatchPlusJSONRequestBody
+}
+
+type UpdateThreeTierAppResponseObject interface {
+	VisitUpdateThreeTierAppResponse(w http.ResponseWriter) error
+}
+
+type UpdateThreeTierApp200JSONResponse ThreeTierApp
+
+func (response UpdateThreeTierApp200JSONResponse) VisitUpdateThreeTierAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateThreeTierApp400ApplicationProblemPlusJSONResponse Error
+
+func (response UpdateThreeTierApp400ApplicationProblemPlusJSONResponse) VisitUpdateThreeTierAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateThreeTierApp404ApplicationProblemPlusJSONResponse Error
+
+func (response UpdateThreeTierApp404ApplicationProblemPlusJSONResponse) VisitUpdateThreeTierAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateThreeTierApp500ApplicationProblemPlusJSONResponse Error
+
+func (response UpdateThreeTierApp500ApplicationProblemPlusJSONResponse) VisitUpdateThreeTierAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// List Three-Tier Apps
@@ -583,6 +685,9 @@ type StrictServerInterface interface {
 	// Get Three-Tier App
 	// (GET /api/v1alpha1/three-tier-apps/{threeTierAppId})
 	GetThreeTierApp(ctx context.Context, request GetThreeTierAppRequestObject) (GetThreeTierAppResponseObject, error)
+	// Update Three-Tier App
+	// (PATCH /api/v1alpha1/three-tier-apps/{threeTierAppId})
+	UpdateThreeTierApp(ctx context.Context, request UpdateThreeTierAppRequestObject) (UpdateThreeTierAppResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -742,6 +847,39 @@ func (sh *strictHandler) GetThreeTierApp(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetThreeTierAppResponseObject); ok {
 		if err := validResponse.VisitGetThreeTierAppResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateThreeTierApp operation middleware
+func (sh *strictHandler) UpdateThreeTierApp(w http.ResponseWriter, r *http.Request, threeTierAppId string) {
+	var request UpdateThreeTierAppRequestObject
+
+	request.ThreeTierAppId = threeTierAppId
+
+	var body UpdateThreeTierAppApplicationMergePatchPlusJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateThreeTierApp(ctx, request.(UpdateThreeTierAppRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateThreeTierApp")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateThreeTierAppResponseObject); ok {
+		if err := validResponse.VisitUpdateThreeTierAppResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

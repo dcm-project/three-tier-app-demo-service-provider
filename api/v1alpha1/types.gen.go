@@ -157,7 +157,7 @@ type ThreeTierAppServiceType string
 // ThreeTierAppList defines model for ThreeTierAppList.
 type ThreeTierAppList struct {
 	NextPageToken *string         `json:"next_page_token,omitempty"`
-	ThreeTierApps *[]ThreeTierApp `json:"three_tier_apps,omitempty"`
+	Results       *[]ThreeTierApp `json:"results,omitempty"`
 }
 
 // ThreeTierAppMetadata defines model for ThreeTierAppMetadata.
@@ -216,6 +216,9 @@ type CreateThreeTierAppParams struct {
 
 // CreateThreeTierAppJSONRequestBody defines body for CreateThreeTierApp for application/json ContentType.
 type CreateThreeTierAppJSONRequestBody = ThreeTierApp
+
+// UpdateThreeTierAppApplicationMergePatchPlusJSONRequestBody defines body for UpdateThreeTierApp for application/merge-patch+json ContentType.
+type UpdateThreeTierAppApplicationMergePatchPlusJSONRequestBody = ThreeTierApp
 
 // Getter for additional properties for ContainerPort. Returns the specified
 // element and whether it was found

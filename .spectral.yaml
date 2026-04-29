@@ -1,5 +1,5 @@
 extends:
-  - https://raw.githubusercontent.com/aep-dev/aep-openapi-linter/main/spectral.yaml
+  - https://raw.githubusercontent.com/aep-dev/aep-openapi-linter/0f10ae50bba3d775553cfd75e25b1d6a68accd70/spectral.yaml
 
 rules:
   x-aep-resource-no-boolean:
@@ -12,3 +12,30 @@ rules:
       functionOptions:
         schema:
           type: object
+
+  aep-list-results-field:
+    description: List response schemas must use 'results' as the array field name (AEP-132)
+    message: "{{property}} should use 'results' field per AEP-132"
+    severity: warn
+    given: $.components.schemas.ThreeTierAppList.properties
+    then:
+      field: results
+      function: truthy
+
+  aep-mutable-resource-timestamps-create:
+    description: Non-singleton resources must have create_time (AEP-148)
+    message: "Resource {{path}} must include create_time per AEP-148"
+    severity: warn
+    given: $.components.schemas.ThreeTierApp.properties
+    then:
+      field: create_time
+      function: truthy
+
+  aep-mutable-resource-timestamps-update:
+    description: Non-singleton resources must have update_time (AEP-148)
+    message: "Resource {{path}} must include update_time per AEP-148"
+    severity: warn
+    given: $.components.schemas.ThreeTierApp.properties
+    then:
+      field: update_time
+      function: truthy
