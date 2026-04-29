@@ -24,7 +24,7 @@ var _ = Describe("OpenShift route helpers", func() {
 			Expect(r.Spec.To.Kind).To(Equal("Service"))
 			Expect(r.Spec.To.Name).To(Equal(svcName))
 			Expect(r.Spec.Port).NotTo(BeNil())
-			Expect(r.Spec.Port.TargetPort).To(Equal(intstr.FromInt(80)))
+			Expect(r.Spec.Port.TargetPort).To(Equal(intstr.FromInt(webPortDefault)))
 			Expect(r.Spec.TLS).NotTo(BeNil())
 			Expect(r.Spec.TLS.Termination).To(Equal(routev1.TLSTerminationEdge))
 			Expect(r.Labels["three-tier.stack"]).To(Equal(stackID))
