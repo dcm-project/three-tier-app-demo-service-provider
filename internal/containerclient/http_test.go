@@ -9,6 +9,7 @@ import (
 
 	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/config"
+	k8sapi "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 )
 
 func testStackDB() config.StackDBCfg {
@@ -19,6 +20,81 @@ func testStackDB() config.StackDBCfg {
 		MysqlUser:    "root",
 	}
 }
+
+func springDatasourceURL(c *k8sapi.Container) string {
+	if c == nil || c.Spec.Process == nil || c.Spec.Process.Env == nil {
+		return ""
+	}
+	for _, e := range *c.Spec.Process.Env {
+		if e.Name == "SPRING_DATASOURCE_URL" {
+			return e.Value
+		}
+	}
+	return ""
+}
+
+func webNginxScript(c *k8sapi.Container) string {
+	if c == nil || c.Spec.Process == nil || c.Spec.Process.Args == nil {
+		return ""
+	}
+	args := *c.Spec.Process.Args
+	if len(args) < 1 {
+		return ""
+	}
+	return args[0]
+}
+
+var _ = Describe("CreateContainers cluster IP propagation", func() {
+	It("sets app JDBC to the db Service name and web proxy_pass to the app Service name", func() {
+		srv, reqs, decodeErr, cleanup := newCaptureCreateBodiesServer()
+		defer cleanup()
+		h, err := newHTTPClient(srv.URL, testStackDB(), config.WebExposureKubernetes, nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		spec := v1alpha1.ThreeTierSpec{
+			Database: v1alpha1.DatabaseTierSpec{Engine: "postgres", Version: "15"},
+			App:      v1alpha1.AppTierSpec{Image: "spring-petclinic:latest"},
+			Web:      v1alpha1.WebTierSpec{Image: "nginx:alpine"},
+		}
+		stackID := "ipchain"
+		Expect(h.CreateContainers(context.Background(), stackID, spec)).To(Succeed())
+		Expect(*decodeErr).NotTo(HaveOccurred())
+
+		app := findCreateBodyForID(reqs, stackID+"-app")
+		Expect(app).NotTo(BeNil())
+		Expect(springDatasourceURL(app)).To(
+			Equal("jdbc:postgresql://" + testMockServiceNameDB + ":5432/petclinic"),
+		)
+
+		web := findCreateBodyForID(reqs, stackID+"-web")
+		Expect(web).NotTo(BeNil())
+		Expect(webNginxScript(web)).To(ContainSubstring("proxy_pass http://" + testMockServiceNameApp + ":8080;"))
+	})
+
+	It("uses MySQL JDBC and reflects custom app HTTP port in nginx proxy_pass", func() {
+		srv, reqs, decodeErr, cleanup := newCaptureCreateBodiesServer()
+		defer cleanup()
+		h, err := newHTTPClient(srv.URL, testStackDB(), config.WebExposureKubernetes, nil)
+		Expect(err).NotTo(HaveOccurred())
+		p := 9090
+		spec := v1alpha1.ThreeTierSpec{
+			Database: v1alpha1.DatabaseTierSpec{Engine: "mysql", Version: "8"},
+			App:      v1alpha1.AppTierSpec{Image: "spring-petclinic:latest", HttpPort: &p},
+			Web:      v1alpha1.WebTierSpec{Image: "nginx:alpine"},
+		}
+		stackID := "ipchain-mysql"
+		Expect(h.CreateContainers(context.Background(), stackID, spec)).To(Succeed())
+		Expect(*decodeErr).NotTo(HaveOccurred())
+
+		app := findCreateBodyForID(reqs, stackID+"-app")
+		Expect(springDatasourceURL(app)).To(
+			Equal("jdbc:mysql://" + testMockServiceNameDB + ":3306/petclinic"),
+		)
+
+		web := findCreateBodyForID(reqs, stackID+"-web")
+		Expect(webNginxScript(web)).To(ContainSubstring("proxy_pass http://" + testMockServiceNameApp + ":9090;"))
+	})
+})
 
 var _ = Describe("HTTPClient", func() {
 	var (

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
@@ -75,8 +77,9 @@ var _ = Describe("CreateContainers web tier port visibility", func() {
 	})
 })
 
-// newCaptureCreateBodiesServer records each POST /api/v1alpha1/containers JSON body
-// and returns 201 with a minimal container JSON (enough for the generated client).
+// newCaptureCreateBodiesServer records each POST /api/v1alpha1/containers body, returns
+// 201 without Service, and answers GET /api/v1alpha1/containers/{id} with a service name
+// (mirrors create + poll used by the HTTPClient).
 type capturedCreateRequest struct {
 	id   string
 	body k8sapi.Container
@@ -86,7 +89,43 @@ func newCaptureCreateBodiesServer() (srv *httptest.Server, reqs *[]capturedCreat
 	var captured []capturedCreateRequest
 	var decErr error
 	decodeErr = &decErr
+	var mu sync.Mutex
+	created := make(map[string]struct{})
+
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Service name is supplied on GET; create intentionally omits Service (client polls GET).
+		if strings.HasPrefix(r.URL.Path, "/api/v1alpha1/containers/") && r.Method == http.MethodGet {
+			id := strings.TrimPrefix(r.URL.Path, "/api/v1alpha1/containers/")
+			if id == "" {
+				http.NotFound(w, r)
+				return
+			}
+			mu.Lock()
+			_, ok := created[id]
+			mu.Unlock()
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			now := time.Now()
+			st := k8sapi.RUNNING
+			svcName := mockServiceNameForContainerID(id)
+			getResp := k8sapi.Container{
+				Id:         &id,
+				Status:     &st,
+				CreateTime: &now,
+				UpdateTime: &now,
+				Service:    &k8sapi.ServiceInfo{Name: &svcName},
+				Spec: k8sapi.ContainerSpec{
+					ServiceType: k8sapi.ContainerSpecServiceTypeContainer,
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(getResp)
+			return
+		}
+
 		if r.URL.Path != "/api/v1alpha1/containers" || r.Method != http.MethodPost {
 			http.NotFound(w, r)
 			return
@@ -99,8 +138,12 @@ func newCaptureCreateBodiesServer() (srv *httptest.Server, reqs *[]capturedCreat
 		}
 		id := r.URL.Query().Get("id")
 		captured = append(captured, capturedCreateRequest{id: id, body: body})
+		mu.Lock()
+		created[id] = struct{}{}
+		mu.Unlock()
 		now := time.Now()
 		st := k8sapi.RUNNING
+		// 201: no Service (runtime uses GET to obtain service name).
 		resp := k8sapi.Container{
 			Id:         &id,
 			Status:     &st,

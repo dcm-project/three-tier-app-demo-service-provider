@@ -52,9 +52,8 @@ func routeNameForStack(stackID string) string {
 	return stackID + "-web"
 }
 
-func desiredWebRoute(stackID, namespace string) *routev1.Route {
+func desiredWebRoute(stackID, namespace, svcName string) *routev1.Route {
 	name := routeNameForStack(stackID)
-	svcName := stackID + "-web"
 	return &routev1.Route{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -82,10 +81,10 @@ func desiredWebRoute(stackID, namespace string) *routev1.Route {
 
 // ensureWebRoute creates or updates a Route to the web Service and returns a browser URL
 // once status.ingress has a hostname (edge TLS → https).
-func (r *openShiftRoutes) ensureWebRoute(ctx context.Context, stackID string) (*string, error) {
+func (r *openShiftRoutes) ensureWebRoute(ctx context.Context, stackID, webServiceName string) (*string, error) {
 	name := routeNameForStack(stackID)
 	rc := r.client.RouteV1().Routes(r.namespace)
-	desired := desiredWebRoute(stackID, r.namespace)
+	desired := desiredWebRoute(stackID, r.namespace, webServiceName)
 
 	cur, err := rc.Get(ctx, name, metav1.GetOptions{})
 	if err == nil {

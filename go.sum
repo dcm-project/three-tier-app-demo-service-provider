@@ -14,8 +14,8 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/dcm-project/k8s-container-service-provider v0.1.0-rc.1.0.20260428135537-585d623702f1 h1:kZgQEzE4I2N7JxRHpi0QrqKhaAcicDX+Xd7yQavMht4=
-github.com/dcm-project/k8s-container-service-provider v0.1.0-rc.1.0.20260428135537-585d623702f1/go.mod h1:6XPrgyRWFdEdMyU5ciy19Yq0vy8XyQIqnGzV6FSt9f8=
+github.com/dcm-project/k8s-container-service-provider v0.1.0-rc.1.0.20260430120302-5298200c4499 h1:TvYXYD2MEBmIS7iVTbYDnKEKNxkRMQX+36k4ZKnOiGc=
+github.com/dcm-project/k8s-container-service-provider v0.1.0-rc.1.0.20260430120302-5298200c4499/go.mod h1:6XPrgyRWFdEdMyU5ciy19Yq0vy8XyQIqnGzV6FSt9f8=
 github.com/dcm-project/service-provider-manager v0.0.0-20260410150915-2a9a460f4345 h1:l3h0hadi2Vpkow6o3mV1CSolF8qkp11BBjBY9y5Lo1o=
 github.com/dcm-project/service-provider-manager v0.0.0-20260410150915-2a9a460f4345/go.mod h1:B7Xr+IGSQWdG+/qUzNJi6iStnT77Va079te8X+niIDA=
 github.com/dprotaso/go-yit v0.0.0-20191028211022-135eb7262960/go.mod h1:9HQzr9D/0PGwMEbC3d5AB7oi67+h4TsQqItC1GVYG58=

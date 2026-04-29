@@ -19,6 +19,7 @@ import (
 // Create also supports deterministic failure injection via container id (query ?id=):
 //   - id prefix "mock-400-" → 400 application/problem+json (body not recorded as created)
 //   - id prefix "mock-500-" → 500 application/problem+json
+//
 // Use stack IDs like "mock-400" / "mock-500" so tier ids become mock-400-db, etc.
 func MockContainerServer() *httptest.Server {
 	mux := http.NewServeMux()
@@ -113,12 +114,14 @@ func (s *mockServerState) handleGet(w http.ResponseWriter, id string) {
 	}
 	now := time.Now()
 	st := k8sapi.RUNNING
+	svcName := mockServiceNameForContainerID(id)
 	resp := k8sapi.Container{
 		Id:         &id,
 		Path:       ptr("containers/" + id),
 		Status:     &st,
 		CreateTime: &now,
 		UpdateTime: &now,
+		Service:    &k8sapi.ServiceInfo{Name: &svcName},
 		Spec: k8sapi.ContainerSpec{
 			ServiceType: k8sapi.ContainerSpecServiceTypeContainer,
 			Metadata:    k8sapi.ContainerMetadata{Name: id},
@@ -159,3 +162,26 @@ func writeMockProblem(w http.ResponseWriter, status int, detail string) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// Test mock service names (GET responses). Keep in sync with behavioral assertions
+// in *_test.go that expect these values in app env and web nginx config.
+const (
+	testMockServiceNameDB       = "db-svc"
+	testMockServiceNameApp      = "app-svc"
+	testMockServiceNameWeb      = "web-svc"
+	testMockServiceNameFallback = "unknown-svc"
+)
+
+// mockServiceNameForContainerID returns a deterministic fake service name for service info in tests.
+func mockServiceNameForContainerID(id string) string {
+	switch {
+	case strings.HasSuffix(id, "-db"):
+		return testMockServiceNameDB
+	case strings.HasSuffix(id, "-app"):
+		return testMockServiceNameApp
+	case strings.HasSuffix(id, "-web"):
+		return testMockServiceNameWeb
+	default:
+		return testMockServiceNameFallback
+	}
+}
