@@ -1,7 +1,7 @@
 # 3-Tier Demo Service Provider
 
 DCM service provider for a 3-tier (web, app, db) demo app. Catalog:
-[three_tier_app_demo](https://github.com/dcm-project/catalog-manager/blob/main/api/v1alpha1/servicetypes/three_tier_app_demo/spec.yaml).
+[three-tier-app-demo](https://github.com/dcm-project/catalog-manager/blob/main/api/v1alpha1/servicetypes/three_tier_app_demo/spec.yaml).
 
 ---
 
