@@ -17,12 +17,12 @@ var _ = Describe("OpenShift route helpers", func() {
 
 	Describe("desiredWebRoute", func() {
 		It("builds edge TLS route to the web Service", func() {
-			stackID, ns := "myapp", "prod-ns"
-			r := desiredWebRoute(stackID, ns)
+			stackID, ns, svcName := "myapp", "prod-ns", "web-svc-abc12"
+			r := desiredWebRoute(stackID, ns, svcName)
 			Expect(r.Name).To(Equal("myapp-web"))
 			Expect(r.Namespace).To(Equal(ns))
 			Expect(r.Spec.To.Kind).To(Equal("Service"))
-			Expect(r.Spec.To.Name).To(Equal("myapp-web"))
+			Expect(r.Spec.To.Name).To(Equal(svcName))
 			Expect(r.Spec.Port).NotTo(BeNil())
 			Expect(r.Spec.Port.TargetPort).To(Equal(intstr.FromInt(80)))
 			Expect(r.Spec.TLS).NotTo(BeNil())
