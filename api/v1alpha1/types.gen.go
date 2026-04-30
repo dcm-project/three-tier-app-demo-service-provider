@@ -32,7 +32,7 @@ func (e ContainerPortVisibility) Valid() bool {
 
 // Defines values for ThreeTierAppServiceType.
 const (
-	ThreeTierAppDemo ThreeTierAppServiceType = "three_tier_app_demo"
+	ThreeTierAppDemo ThreeTierAppServiceType = "three-tier-app-demo"
 )
 
 // Valid indicates whether the value is a known member of the ThreeTierAppServiceType enum.
@@ -137,7 +137,7 @@ type ThreeTierApp struct {
 	Path          *string                 `json:"path,omitempty"`
 	ProviderHints *map[string]interface{} `json:"provider_hints,omitempty"`
 
-	// ServiceType Service type (must be three_tier_app_demo)
+	// ServiceType Service type (must be three-tier-app-demo)
 	ServiceType *ThreeTierAppServiceType `json:"service_type,omitempty"`
 
 	// Spec Three-tier structure (database, app, web)
@@ -151,7 +151,7 @@ type ThreeTierApp struct {
 	WebEndpoint *string `json:"web_endpoint,omitempty"`
 }
 
-// ThreeTierAppServiceType Service type (must be three_tier_app_demo)
+// ThreeTierAppServiceType Service type (must be three-tier-app-demo)
 type ThreeTierAppServiceType string
 
 // ThreeTierAppList defines model for ThreeTierAppList.

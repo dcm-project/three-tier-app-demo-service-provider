@@ -259,8 +259,8 @@ components:
             - $ref: '#/components/schemas/ThreeTierAppStatus'
         service_type:
           type: string
-          enum: [three_tier_app_demo]
-          description: Service type (must be three_tier_app_demo)
+          enum: [three-tier-app-demo]
+          description: Service type (must be three-tier-app-demo)
         provider_hints:
           type: object
           additionalProperties: true
