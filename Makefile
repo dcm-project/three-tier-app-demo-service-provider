@@ -8,10 +8,6 @@ CONTAINER_ENGINE ?= $(shell \
 		echo docker; \
 	fi)
 
-ifeq ($(CONTAINER_ENGINE),)
-$(error No supported container engine found. Please install podman or docker, or set CONTAINER_ENGINE explicitly.)
-endif
-
 # CONTAINER_IMAGE_NAME: FQDN (without tag) of the container image. Set to override
 CONTAINER_IMAGE_NAME ?= quay.io/dcm-project/${BINARY_NAME}
 
@@ -72,7 +68,13 @@ check-generate-api: generate-api
 check-aep:
 	spectral lint --fail-severity=warn ./api/v1alpha1/openapi.yaml
 
-image-build:
+check-container-engine:
+	@if [ -z "$(CONTAINER_ENGINE)" ]; then \
+		echo "Error: No supported container engine found. Please install podman or docker, or set CONTAINER_ENGINE explicitly." >&2; \
+		exit 1; \
+	fi
+
+image-build: check-container-engine
 	$(CONTAINER_ENGINE) build -t $(CONTAINER_IMAGE_NAME):$(CONTAINER_IMAGE_TAG) .
 
-.PHONY: build run clean fmt vet test tidy generate-types generate-spec generate-server generate-client generate-api check-generate-api check-aep image-build
+.PHONY: build run clean fmt vet test tidy generate-types generate-spec generate-server generate-client generate-api check-generate-api check-aep check-container-engine image-build
