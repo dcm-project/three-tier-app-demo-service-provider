@@ -33,6 +33,12 @@ const (
 	// Polling for Service name: create may return before the SP populates it.
 	k8sServiceNamePollInterval = 500 * time.Millisecond
 	k8sServiceNameMaxWait      = 3 * time.Minute
+
+	// If the webserver image is from Red Hat, we need to use a different configuration directory.
+	imageRegistryRedHat    = "redhat"
+
+	// The default port for the web tier is 9090.
+	webPortDefault = 9090
 )
 
 // newHTTPClient creates an HTTPClient targeting the k8s container SP at baseURL.
@@ -81,10 +87,16 @@ func (h *HTTPClient) k8sProcessEnvForDatabase(db v1alpha1.DatabaseTierSpec) *k8s
 
 // k8sProcessForWeb configures nginx to proxy to the app Service name, using the app
 // tier's configured port (defaults to 8080).
-func k8sProcessForWeb(appServiceHost string, appPort int) *k8sapi.ContainerProcess {
-	script := fmt.Sprintf(`cat > /etc/nginx/conf.d/default.conf <<'EOF'
+func k8sProcessForWeb(webPort int, appServiceHost string, appPort int, image string) *k8sapi.ContainerProcess {
+	var configDir string
+	if strings.Contains(image, imageRegistryRedHat) {
+		configDir = "${NGINX_CONFIGURATION_PATH}"
+	} else {
+		configDir = "/etc/nginx/conf.d"
+	}
+	script := fmt.Sprintf(`cat > %s/default.conf <<'EOF'
 server {
-  listen 80;
+  listen %d;
   location / {
     proxy_pass http://%s:%d;
     proxy_set_header Host $host;
@@ -92,7 +104,7 @@ server {
   }
 }
 EOF
-exec nginx -g 'daemon off;'`, appServiceHost, appPort)
+exec nginx -g 'daemon off;'`, configDir, webPort, appServiceHost, appPort)
 	cmd := []string{"/bin/sh", "-c"}
 	args := []string{script}
 	return &k8sapi.ContainerProcess{Command: &cmd, Args: &args}
@@ -301,7 +313,7 @@ func (h *HTTPClient) createStackContainers(ctx context.Context, stackID string, 
 
 	// 3) Web — nginx proxy target is the app Service name.
 	webID := stackID + "-web"
-	if err = h.createK8sStackTier(ctx, &ids, stackID, "web", webID, spec.Web.Image, tierPorts(spec.Web.Network, 80, webVis), k8sProcessForWeb(appServiceName, appPort), webRes); err != nil {
+	if err = h.createK8sStackTier(ctx, &ids, stackID, "web", webID, spec.Web.Image, tierPorts(spec.Web.Network, webPortDefault, webVis), k8sProcessForWeb(webPortDefault, appServiceName, appPort, spec.Web.Image), webRes); err != nil {
 		slog.ErrorContext(ctx, "create web container", "stack_id", stackID, "err", err)
 		return ids, err
 	}

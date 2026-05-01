@@ -69,7 +69,7 @@ func desiredWebRoute(stackID, namespace, svcName string) *routev1.Route {
 				Name: svcName,
 			},
 			Port: &routev1.RoutePort{
-				TargetPort: intstr.FromInt(80),
+				TargetPort: intstr.FromInt(webPortDefault),
 			},
 			TLS: &routev1.TLSConfig{
 				Termination:                   routev1.TLSTerminationEdge,
