@@ -25,6 +25,19 @@ func MockContainerServer() *httptest.Server {
 	mux := http.NewServeMux()
 	state := &mockServerState{created: make(map[string]struct{})}
 
+	mux.HandleFunc("/api/v1alpha1/containers/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "healthy",
+			"path":   "health",
+			"type":   "k8s-container-service-provider.dcm.io/health",
+		})
+	})
 	mux.HandleFunc("/api/v1alpha1/containers", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			state.handleCreate(w, r)

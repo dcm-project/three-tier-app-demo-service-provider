@@ -46,6 +46,9 @@ func (m *MockClient) GetStatus(ctx context.Context, stackID string) (v1alpha1.Th
 // GetWebEndpoint always returns nil for the mock (no external IP in tests).
 func (m *MockClient) GetWebEndpoint(_ context.Context, _ string) *string { return nil }
 
+// CheckHealth always returns nil for mock (simulated backend is always healthy).
+func (m *MockClient) CheckHealth(_ context.Context) error { return nil }
+
 // DeleteContainers removes the stack from the mock's tracked state. Returns ErrNotFound
 // if the stack was never created, matching k8s container SP 404 behavior.
 func (m *MockClient) DeleteContainers(ctx context.Context, stackID string) error {
