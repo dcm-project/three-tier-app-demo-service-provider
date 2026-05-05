@@ -185,6 +185,12 @@ func (s *ThreeTierAppService) waitForRunning(ctx context.Context, id string) err
 	}
 }
 
+// CheckHealth delegates to the container client to check whether the backing
+// provider is healthy.
+func (s *ThreeTierAppService) CheckHealth(ctx context.Context) error {
+	return s.container.CheckHealth(ctx)
+}
+
 func statusMessage(status string) string {
 	switch status {
 	case statusreport.StatusRunning:

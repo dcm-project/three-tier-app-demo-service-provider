@@ -72,4 +72,7 @@ type ContainerClient interface {
 	// platform assigns an external IP (e.g. OpenShift LoadBalancer). Returns nil
 	// when no external IP is available; callers should fall back to port-forward.
 	GetWebEndpoint(ctx context.Context, stackID string) *string
+	// CheckHealth checks whether the backing container provider is healthy.
+	// Returns nil when healthy, an error when unhealthy or unreachable.
+	CheckHealth(ctx context.Context) error
 }

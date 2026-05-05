@@ -52,6 +52,10 @@ func (c *statusOverrideClient) GetWebEndpoint(ctx context.Context, stackID strin
 	return c.inner.GetWebEndpoint(ctx, stackID)
 }
 
+func (c *statusOverrideClient) CheckHealth(ctx context.Context) error {
+	return c.inner.CheckHealth(ctx)
+}
+
 func (c *statusOverrideClient) setStatus(stackID string, status v1alpha1.ThreeTierAppStatus) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
