@@ -418,5 +418,21 @@ func (h *HTTPClient) GetStatus(ctx context.Context, stackID string) (v1alpha1.Th
 	return AggregateK8sContainerStatuses(statuses)
 }
 
+// CheckHealth calls the k8s container SP health endpoint and returns an error
+// if the SP is unreachable or reports an unhealthy backing provider.
+func (h *HTTPClient) CheckHealth(ctx context.Context) error {
+	resp, err := h.Client.GetHealthWithResponse(ctx)
+	if err != nil {
+		return fmt.Errorf("k8s container SP unreachable: %w", err)
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return fmt.Errorf("k8s container SP returned status %d", resp.StatusCode())
+	}
+	if resp.JSON200 == nil || resp.JSON200.Status != "healthy" {
+		return fmt.Errorf("k8s container SP is unhealthy")
+	}
+	return nil
+}
+
 // Ensure HTTPClient implements ContainerClient.
 var _ ContainerClient = (*HTTPClient)(nil)

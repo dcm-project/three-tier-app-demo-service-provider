@@ -25,12 +25,17 @@ var _ server.StrictServerInterface = (*Handlers)(nil)
 
 var idPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
-func (h *Handlers) GetHealth(_ context.Context, _ server.GetHealthRequestObject) (server.GetHealthResponseObject, error) {
+func (h *Handlers) GetHealth(ctx context.Context, _ server.GetHealthRequestObject) (server.GetHealthResponseObject, error) {
+	state := "healthy"
+	if err := h.Svc.CheckHealth(ctx); err != nil {
+		state = "unhealthy"
+	}
+
 	path := "health"
 	ht := "3-tier-demo-service-provider.dcm.io/health"
 	return server.GetHealth200JSONResponse(v1alpha1.Health{
 		Type:  &ht,
-		State: "healthy",
+		State: state,
 		Path:  &path,
 	}), nil
 }

@@ -169,6 +169,9 @@ func (p *PodmanClient) GetStatus(ctx context.Context, stackID string) (v1alpha1.
 	return WorstStatusFromPodmanStates(states)
 }
 
+// CheckHealth always returns nil for Podman (local runtime, no remote backing provider).
+func (p *PodmanClient) CheckHealth(_ context.Context) error { return nil }
+
 func (p *PodmanClient) DeleteContainers(ctx context.Context, stackID string) error {
 	dbName, appName, webName := containerNames(stackID)
 	netName := networkName(stackID)
