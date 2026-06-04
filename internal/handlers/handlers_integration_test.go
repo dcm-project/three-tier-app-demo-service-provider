@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,9 +27,10 @@ import (
 
 // statusOverrideClient wraps MockClient and overrides GetStatus for testing status changes.
 type statusOverrideClient struct {
-	inner    *containerclient.MockClient
-	override map[string]v1alpha1.ThreeTierAppStatus
-	mu       sync.RWMutex
+	inner         *containerclient.MockClient
+	override      map[string]v1alpha1.ThreeTierAppStatus
+	checkHealthErr error
+	mu            sync.RWMutex
 }
 
 func (c *statusOverrideClient) CreateContainers(ctx context.Context, stackID string, spec v1alpha1.ThreeTierSpec) error {
@@ -53,6 +56,9 @@ func (c *statusOverrideClient) GetWebEndpoint(ctx context.Context, stackID strin
 }
 
 func (c *statusOverrideClient) CheckHealth(ctx context.Context) error {
+	if c.checkHealthErr != nil {
+		return c.checkHealthErr
+	}
 	return c.inner.CheckHealth(ctx)
 }
 
@@ -438,5 +444,78 @@ var _ = Describe("Handlers status consistency (configurable client)", func() {
 		var stack v1alpha1.ThreeTierApp
 		Expect(json.NewDecoder(resp.Body).Decode(&stack)).To(Succeed())
 		Expect(stack.Status).To(HaveValue(Equal(v1alpha1.PENDING)))
+	})
+})
+
+const healthEndpointPath = "/api/v1alpha1/three-tier-apps/health"
+
+func decodeHealthResponse(resp *http.Response) (v1alpha1.Health, map[string]json.RawMessage) {
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred())
+
+	var keys map[string]json.RawMessage
+	Expect(json.Unmarshal(raw, &keys)).To(Succeed())
+
+	var body v1alpha1.Health
+	Expect(json.Unmarshal(raw, &body)).To(Succeed())
+	return body, keys
+}
+
+var _ = Describe("Health endpoint (SPRM contract)", func() {
+	var srv *httptest.Server
+
+	AfterEach(func() {
+		if srv != nil {
+			srv.Close()
+		}
+	})
+
+	Context("with a healthy backing provider", func() {
+		BeforeEach(func() {
+			svc := service.New(newTestStore(), &containerclient.MockClient{}, nil)
+			h := &handlers.Handlers{Svc: svc}
+			r := chi.NewRouter()
+			_ = server.HandlerFromMux(server.NewStrictHandler(h, nil), r)
+			srv = httptest.NewServer(r)
+		})
+
+		It("returns JSON status healthy (not state) for SPM health monitor", func() {
+			resp, err := http.Get(srv.URL + healthEndpointPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			body, keys := decodeHealthResponse(resp)
+			Expect(keys).To(HaveKey("status"))
+			Expect(keys).NotTo(HaveKey("state"))
+			Expect(body.Status).To(Equal("healthy"))
+			Expect(body.Path).NotTo(BeNil())
+			Expect(*body.Path).To(Equal("health"))
+		})
+	})
+
+	Context("with an unhealthy backing provider", func() {
+		BeforeEach(func() {
+			client := &statusOverrideClient{
+				inner:          &containerclient.MockClient{},
+				checkHealthErr: errors.New("backing container SP unreachable"),
+			}
+			svc := service.New(newTestStore(), client, nil)
+			h := &handlers.Handlers{Svc: svc}
+			r := chi.NewRouter()
+			_ = server.HandlerFromMux(server.NewStrictHandler(h, nil), r)
+			srv = httptest.NewServer(r)
+		})
+
+		It("returns JSON status unhealthy when CheckHealth fails", func() {
+			resp, err := http.Get(srv.URL + healthEndpointPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			body, keys := decodeHealthResponse(resp)
+			Expect(keys).To(HaveKey("status"))
+			Expect(keys).NotTo(HaveKey("state"))
+			Expect(body.Status).To(Equal("unhealthy"))
+		})
 	})
 })

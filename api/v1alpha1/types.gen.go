@@ -120,9 +120,11 @@ type Error struct {
 
 // Health Health status
 type Health struct {
-	Path  *string `json:"path,omitempty"`
-	State string  `json:"state"`
-	Type  *string `json:"type,omitempty"`
+	Path *string `json:"path,omitempty"`
+
+	// Status Health status
+	Status string  `json:"status"`
+	Type   *string `json:"type,omitempty"`
 }
 
 // ThreeTierApp 3-tier app (web, app, db). Create requires spec; id from query param, metadata.name, or server UUID.
