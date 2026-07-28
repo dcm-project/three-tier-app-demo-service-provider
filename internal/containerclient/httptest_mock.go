@@ -83,7 +83,7 @@ func (s *mockServerState) handleCreate(w http.ResponseWriter, r *http.Request) {
 	if _, exists := s.created[id]; exists {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusConflict)
-		_ = json.NewEncoder(w).Encode(map[string]string{"type": "ALREADY_EXISTS", "detail": "container already exists"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"type": "https://dcm.example.com/errors/already-exists", "detail": "container already exists"})
 		return
 	}
 	if strings.HasPrefix(id, "mock-400-") {
@@ -122,7 +122,7 @@ func (s *mockServerState) handleGet(w http.ResponseWriter, id string) {
 	if !exists {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]string{"type": "NOT_FOUND", "detail": "container not found"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"type": "https://dcm.example.com/errors/not-found", "detail": "container not found"})
 		return
 	}
 	now := time.Now()
@@ -156,7 +156,7 @@ func (s *mockServerState) handleDelete(w http.ResponseWriter, id string) {
 	if _, exists := s.created[id]; !exists {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]string{"type": "NOT_FOUND", "detail": "container not found"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"type": "https://dcm.example.com/errors/not-found", "detail": "container not found"})
 		return
 	}
 	delete(s.created, id)

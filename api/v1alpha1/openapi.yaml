@@ -416,7 +416,7 @@ components:
 
     Error:
       type: object
-      description: RFC 7807 problem details
+      description: RFC 7807 compliant error response
       required:
         - type
         - title
@@ -424,13 +424,20 @@ components:
         type:
           type: string
           format: uri-reference
+          description: URI reference identifying the error type
+          example: "https://dcm.example.com/errors/invalid-argument"
         title:
           type: string
+          description: Short human-readable summary of the problem
         status:
           type: integer
           format: int32
+          description: HTTP status code
         detail:
           type: string
+          description: Human-readable explanation specific to this occurrence
         instance:
           type: string
           format: uri-reference
+          description: URI reference for this specific error occurrence
+          example: "/errors/123e4567-e89b-12d3-a456-426614174000"

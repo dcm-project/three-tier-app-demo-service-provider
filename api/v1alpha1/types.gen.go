@@ -109,13 +109,22 @@ type DatabaseTierSpec struct {
 	Version string `json:"version"`
 }
 
-// Error RFC 7807 problem details
+// Error RFC 7807 compliant error response
 type Error struct {
-	Detail   *string `json:"detail,omitempty"`
+	// Detail Human-readable explanation specific to this occurrence
+	Detail *string `json:"detail,omitempty"`
+
+	// Instance URI reference for this specific error occurrence
 	Instance *string `json:"instance,omitempty"`
-	Status   *int32  `json:"status,omitempty"`
-	Title    string  `json:"title"`
-	Type     string  `json:"type"`
+
+	// Status HTTP status code
+	Status *int32 `json:"status,omitempty"`
+
+	// Title Short human-readable summary of the problem
+	Title string `json:"title"`
+
+	// Type URI reference identifying the error type
+	Type string `json:"type"`
 }
 
 // Health Health status
