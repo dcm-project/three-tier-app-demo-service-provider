@@ -1,3 +1,9 @@
+// Package registration handles self-registration with DCM's environment agent.
+//
+// The control-plane /providers API was removed (control-plane#51). Standalone
+// SPs register against environment-agent's POST /api/v1alpha1/providers, the
+// same contract used by osac-service-provider. The agent then advertises
+// three-tier-app-demo on its own POST /agents to the control plane.
 package registration
 
 import (
@@ -5,15 +11,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
+	"strings"
 	"sync"
 	"time"
 
-	dcmv1alpha1 "github.com/dcm-project/service-provider-manager/api/v1alpha1/provider"
-	dcmclient "github.com/dcm-project/service-provider-manager/pkg/client/provider"
-
-	"github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
+	v1alpha1 "github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/config"
+	agentv1alpha1 "github.com/dcm-project/environment-agent/api/v1alpha1"
+	agentclient "github.com/dcm-project/environment-agent/pkg/client"
 )
 
 const (
@@ -32,84 +37,93 @@ func mustPostPath() string {
 	return p
 }
 
-var ops = []string{"CREATE", "DELETE", "READ"}
-
 // Option configures a Registrar.
 type Option func(*Registrar)
 
-// SetInitialBackoff sets the initial retry backoff interval.
+// SetInitialBackoff sets the initial retry backoff interval for retryable failures.
 func SetInitialBackoff(d time.Duration) Option {
 	return func(r *Registrar) {
 		r.initialBackoff = d
 	}
 }
 
-// SetMaxBackoff sets the maximum retry backoff interval.
+// SetMaxBackoff sets the maximum retry backoff interval for retryable failures.
 func SetMaxBackoff(d time.Duration) Option {
 	return func(r *Registrar) {
 		r.maxBackoff = d
 	}
 }
 
-// Registrar handles registration with the DCM service provider registry.
-type Registrar struct {
-	cfg            *config.Config
-	logger         *slog.Logger
-	client         *dcmclient.ClientWithResponses
-	initialBackoff time.Duration
-	maxBackoff     time.Duration
-	startOnce      sync.Once
-	done           chan struct{}
+// SetReRegistrationInterval sets how often a successful registration is renewed,
+// and the retry cadence after a 409 (slot held by another provider).
+func SetReRegistrationInterval(d time.Duration) Option {
+	return func(r *Registrar) {
+		r.reRegistrationInterval = d
+	}
 }
 
-// NewRegistrar creates a Registrar with the given configuration and options.
-func NewRegistrar(cfg *config.Config, logger *slog.Logger, opts ...Option) (*Registrar, error) {
-	u, err := url.Parse(cfg.DCM.RegistrationURL)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return nil, fmt.Errorf("creating DCM client: invalid registration URL %q", cfg.DCM.RegistrationURL)
+// WithHTTPClient overrides the HTTP client used by the generated
+// environment-agent client. Intended for tests.
+func WithHTTPClient(c *http.Client) Option {
+	return func(r *Registrar) {
+		r.httpClient = c
 	}
+}
 
+// Registrar registers this SP with environment-agent's provider API.
+type Registrar struct {
+	cfg                    *config.Config
+	logger                 *slog.Logger
+	client                 *agentclient.ClientWithResponses
+	httpClient             *http.Client
+	initialBackoff         time.Duration
+	maxBackoff             time.Duration
+	reRegistrationInterval time.Duration
+	startOnce              sync.Once
+	done                   chan struct{}
+}
+
+// NewRegistrar creates a Registrar targeting cfg.DCM.RegistrationURL
+// (environment-agent base, e.g. http://agent:8080/api/v1alpha1).
+func NewRegistrar(cfg *config.Config, logger *slog.Logger, opts ...Option) (*Registrar, error) {
 	r := &Registrar{
-		cfg:            cfg,
-		logger:         logger,
-		initialBackoff: 1 * time.Second,
-		maxBackoff:     60 * time.Second,
-		done:           make(chan struct{}),
+		cfg:                    cfg,
+		logger:                 logger,
+		initialBackoff:         1 * time.Second,
+		maxBackoff:             60 * time.Second,
+		reRegistrationInterval: 60 * time.Second,
+		httpClient:             &http.Client{Timeout: httpTimeout},
+		done:                   make(chan struct{}),
 	}
 	for _, opt := range opts {
 		opt(r)
 	}
 
-	httpClient := &http.Client{Timeout: httpTimeout}
-	c, err := dcmclient.NewClientWithResponses(
-		cfg.DCM.RegistrationURL,
-		dcmclient.WithHTTPClient(httpClient),
+	client, err := agentclient.NewClientWithResponses(
+		normalizeRegistrationURL(cfg.DCM.RegistrationURL),
+		agentclient.WithHTTPClient(r.httpClient),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating DCM client: %w", err)
+		return nil, fmt.Errorf("creating environment-agent client: %w", err)
 	}
-	r.client = c
-
+	r.client = client
 	return r, nil
 }
 
-// BuildPayload constructs the registration payload from configuration.
-func BuildPayload(cfg *config.Config) dcmv1alpha1.Provider {
-	p := dcmv1alpha1.Provider{
+// BuildPayload constructs the environment-agent provider registration payload.
+func BuildPayload(cfg *config.Config) agentv1alpha1.Provider {
+	p := agentv1alpha1.Provider{
 		Name:          cfg.Provider.Name,
 		ServiceType:   serviceType,
-		Endpoint:      cfg.Provider.Endpoint + endpointSuffix,
-		Operations:    &ops,
+		Endpoint:      strings.TrimRight(cfg.Provider.Endpoint, "/") + endpointSuffix,
 		SchemaVersion: schemaVersion,
 	}
-
 	if cfg.Provider.DisplayName != "" {
 		displayName := cfg.Provider.DisplayName
 		p.DisplayName = &displayName
 	}
-
 	if cfg.Provider.Region != "" || cfg.Provider.Zone != "" {
-		meta := &dcmv1alpha1.ProviderMetadata{}
+		meta := &agentv1alpha1.ProviderMetadata{}
 		if cfg.Provider.Region != "" {
 			region := cfg.Provider.Region
 			meta.RegionCode = &region
@@ -120,16 +134,15 @@ func BuildPayload(cfg *config.Config) dcmv1alpha1.Provider {
 		}
 		p.Metadata = meta
 	}
-
 	return p
 }
 
-// Start begins the registration process in the background.
+// Start begins registration in the background. Multiple calls are safe.
 func (r *Registrar) Start(ctx context.Context) {
 	r.startOnce.Do(func() {
 		go func() {
 			defer close(r.done)
-			r.run(ctx)
+			r.runLoop(ctx)
 		}()
 	})
 }
@@ -139,28 +152,46 @@ func (r *Registrar) Done() <-chan struct{} {
 	return r.done
 }
 
-func (r *Registrar) run(ctx context.Context) {
-	payload := BuildPayload(r.cfg)
+func (r *Registrar) runLoop(ctx context.Context) {
 	backoff := r.initialBackoff
 
 	for {
-		if err := r.register(ctx, payload); err == nil {
-			r.logger.Info("registration successful")
-			return
-		} else {
-			r.logger.Warn("registration failed, will retry", "error", err)
-		}
+		statusCode, err := r.register(ctx)
 
-		timer := time.NewTimer(backoff)
-		select {
-		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
+		switch {
+		case err == nil && (statusCode == http.StatusOK || statusCode == http.StatusCreated):
+			r.logger.Info("registration successful", "name", r.cfg.Provider.Name, "status", statusCode)
+			backoff = r.initialBackoff
+			if !sleepOrDone(ctx, r.reRegistrationInterval) {
+				return
 			}
+			continue
+
+		case err == nil && statusCode == http.StatusConflict:
+			r.logger.Warn("registration conflict: service type already served by another provider, will retry on re-registration cadence",
+				"name", r.cfg.Provider.Name)
+			if !sleepOrDone(ctx, r.reRegistrationInterval) {
+				return
+			}
+			continue
+
+		case err == nil && statusCode >= 400 && statusCode < 500:
+			r.logger.Error("registration failed with non-retryable status, giving up",
+				"name", r.cfg.Provider.Name, "status", statusCode)
 			return
-		case <-timer.C:
+
+		case err == nil:
+			r.logger.Warn("registration returned unexpected status, will retry",
+				"name", r.cfg.Provider.Name, "status", statusCode)
+
+		default:
+			r.logger.Warn("registration request failed, will retry",
+				"name", r.cfg.Provider.Name, "error", err)
 		}
 
+		if !sleepOrDone(ctx, backoff) {
+			return
+		}
 		backoff *= 2
 		if backoff > r.maxBackoff {
 			backoff = r.maxBackoff
@@ -168,20 +199,34 @@ func (r *Registrar) run(ctx context.Context) {
 	}
 }
 
-func (r *Registrar) register(ctx context.Context, provider dcmv1alpha1.Provider) error {
-	resp, err := r.client.CreateProviderWithResponse(ctx, nil, provider)
+func (r *Registrar) register(ctx context.Context) (int, error) {
+	payload := BuildPayload(r.cfg)
+	resp, err := r.client.CreateProviderWithResponse(ctx, nil, payload)
 	if err != nil {
-		return fmt.Errorf("sending registration request: %w", err)
+		return 0, fmt.Errorf("sending registration request: %w", err)
 	}
+	return resp.StatusCode(), nil
+}
 
-	sc := resp.StatusCode()
-	if sc != http.StatusOK && sc != http.StatusCreated {
-		body := resp.Body
-		if len(body) > 200 {
-			body = body[:200]
-		}
-		return fmt.Errorf("registration returned status %d: %s", sc, string(body))
+func sleepOrDone(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
+}
 
-	return nil
+// normalizeRegistrationURL ensures a trailing slash so oapi-codegen's
+// relative "/providers" join keeps the /api/v1alpha1 prefix.
+func normalizeRegistrationURL(raw string) string {
+	if raw == "" {
+		return raw
+	}
+	if strings.HasSuffix(raw, "/") {
+		return raw
+	}
+	return raw + "/"
 }

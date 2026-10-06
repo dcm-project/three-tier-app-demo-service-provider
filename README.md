@@ -99,7 +99,7 @@ app, browser access, delete, stop).
 | `TIER_STACK_DB_PASSWORD` | DB password | `petclinic` |
 | `TIER_STACK_DB_NAME` | DB name | `petclinic` |
 | `TIER_STACK_POSTGRES_USER` / `TIER_STACK_MYSQL_USER` | JDBC user | `postgres` / `root` |
-| `DCM_REGISTRATION_URL`, `SP_NAME`, `SP_ENDPOINT` | Self-registration | (empty) |
+| `DCM_REGISTRATION_URL`, `SP_NAME`, `SP_ENDPOINT` | Register with the environment agent (`POST {DCM_REGISTRATION_URL}/providers`). URL is the agent API base, e.g. `http://environment-agent:8080/api/v1alpha1`. `SP_ENDPOINT` is this SP's base URL; the registrar appends `/api/v1alpha1/three-tier-apps`. | (empty) |
 | `SP_NATS_URL` | NATS URL for status events to DCM | (empty) |
 
 Optional **`.env`** in the working directory: `cp .env.example .env` (not

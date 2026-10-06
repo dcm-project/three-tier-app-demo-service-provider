@@ -15,13 +15,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	dcmv1alpha1 "github.com/dcm-project/service-provider-manager/api/v1alpha1/provider"
+	agentv1alpha1 "github.com/dcm-project/environment-agent/api/v1alpha1"
 
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/config"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/registration"
 )
 
-// syncBuffer wraps bytes.Buffer with a mutex for concurrent slog output.
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -39,11 +38,36 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
+func testCfg(registrationURL string) *config.Config {
+	return &config.Config{
+		Provider: config.ProviderConfig{
+			Name:        "3tier-sp",
+			DisplayName: "Three Tier Demo SP",
+			Endpoint:    "https://sp.example.com",
+			Region:      "us-east-1",
+			Zone:        "us-east-1a",
+		},
+		DCM: config.DCMConfig{
+			RegistrationURL: registrationURL,
+		},
+	}
+}
+
+func agentOKResponse(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(agentv1alpha1.Provider{
+		Name:          "3tier-sp",
+		ServiceType:   "three-tier-app-demo",
+		Endpoint:      "https://sp.example.com/api/v1alpha1/three-tier-apps",
+		SchemaVersion: "v1alpha1",
+	})
+}
+
 var _ = Describe("Registration Integration", func() {
 
 	var (
 		mockServer *httptest.Server
-		cfg        *config.Config
 		logBuf     *syncBuffer
 		logger     *slog.Logger
 	)
@@ -63,24 +87,15 @@ var _ = Describe("Registration Integration", func() {
 		var requestReceived atomic.Bool
 
 		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodPost && r.URL.Path == "/providers" {
+			if r.Method == http.MethodPost && r.URL.Path == "/api/v1alpha1/providers" {
 				requestReceived.Store(true)
+				agentOKResponse(w)
+				return
 			}
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusNotFound)
 		}))
 
-		cfg = &config.Config{
-			Provider: config.ProviderConfig{
-				Name:        "3tier-sp",
-				DisplayName: "Three Tier Demo SP",
-				Endpoint:    "https://sp.example.com",
-			},
-			DCM: config.DCMConfig{
-				RegistrationURL: mockServer.URL,
-			},
-		}
-
-		registrar, err := registration.NewRegistrar(cfg, logger)
+		registrar, err := registration.NewRegistrar(testCfg(mockServer.URL+"/api/v1alpha1"), logger)
 		Expect(err).NotTo(HaveOccurred())
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -89,40 +104,29 @@ var _ = Describe("Registration Integration", func() {
 
 		Eventually(func() bool {
 			return requestReceived.Load()
-		}).WithTimeout(3*time.Second).WithPolling(100*time.Millisecond).Should(BeTrue(),
-			"expected POST to /providers but no request was received")
+		}).WithTimeout(3 * time.Second).WithPolling(100 * time.Millisecond).Should(BeTrue(),
+			"expected POST to /api/v1alpha1/providers but no request was received")
 	})
 
-	It("sends payload with all expected fields including metadata", func() {
-		var receivedPayload dcmv1alpha1.Provider
+	It("sends provider payload with collection endpoint and service type", func() {
+		var receivedPayload agentv1alpha1.Provider
 		var requestReceived atomic.Bool
 
 		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodPost && r.URL.Path == "/providers" {
+			if r.Method == http.MethodPost && r.URL.Path == "/api/v1alpha1/providers" {
 				defer r.Body.Close()
 				body, err := io.ReadAll(r.Body)
 				if err == nil {
 					_ = json.Unmarshal(body, &receivedPayload)
 					requestReceived.Store(true)
 				}
+				agentOKResponse(w)
+				return
 			}
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusNotFound)
 		}))
 
-		cfg = &config.Config{
-			Provider: config.ProviderConfig{
-				Name:        "3tier-sp",
-				DisplayName: "Three Tier SP",
-				Endpoint:    "https://sp.example.com",
-				Region:      "us-east-1",
-				Zone:        "us-east-1a",
-			},
-			DCM: config.DCMConfig{
-				RegistrationURL: mockServer.URL,
-			},
-		}
-
-		registrar, err := registration.NewRegistrar(cfg, logger)
+		registrar, err := registration.NewRegistrar(testCfg(mockServer.URL+"/api/v1alpha1"), logger)
 		Expect(err).NotTo(HaveOccurred())
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -131,19 +135,20 @@ var _ = Describe("Registration Integration", func() {
 
 		Eventually(func() bool {
 			return requestReceived.Load()
-		}).WithTimeout(3*time.Second).WithPolling(100*time.Millisecond).Should(BeTrue(),
+		}).WithTimeout(3 * time.Second).WithPolling(100 * time.Millisecond).Should(BeTrue(),
 			"expected registration request but none was received")
 
 		Expect(receivedPayload.Name).To(Equal("3tier-sp"))
 		Expect(receivedPayload.ServiceType).To(Equal("three-tier-app-demo"))
-		Expect(receivedPayload.DisplayName).To(HaveValue(Equal("Three Tier SP")))
-		Expect(receivedPayload.Endpoint).To(ContainSubstring("https://sp.example.com"))
-		Expect(receivedPayload.Endpoint).To(ContainSubstring("/three-tier-apps"))
-		Expect(receivedPayload.Operations).To(HaveValue(ConsistOf("CREATE", "DELETE", "READ")))
 		Expect(receivedPayload.SchemaVersion).To(Equal("v1alpha1"))
+		Expect(receivedPayload.Endpoint).To(Equal("https://sp.example.com/api/v1alpha1/three-tier-apps"))
+		Expect(receivedPayload.DisplayName).NotTo(BeNil())
+		Expect(*receivedPayload.DisplayName).To(Equal("Three Tier Demo SP"))
 		Expect(receivedPayload.Metadata).NotTo(BeNil())
-		Expect(receivedPayload.Metadata.RegionCode).To(HaveValue(Equal("us-east-1")))
-		Expect(receivedPayload.Metadata.Zone).To(HaveValue(Equal("us-east-1a")))
+		Expect(receivedPayload.Metadata.RegionCode).NotTo(BeNil())
+		Expect(*receivedPayload.Metadata.RegionCode).To(Equal("us-east-1"))
+		Expect(receivedPayload.Metadata.Zone).NotTo(BeNil())
+		Expect(*receivedPayload.Metadata.Zone).To(Equal("us-east-1a"))
 	})
 
 	It("retries with increasing intervals and succeeds on 4th attempt", func() {
@@ -152,7 +157,7 @@ var _ = Describe("Registration Integration", func() {
 		var mu sync.Mutex
 
 		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodPost && r.URL.Path == "/providers" {
+			if r.Method == http.MethodPost && r.URL.Path == "/api/v1alpha1/providers" {
 				count := requestCount.Add(1)
 				mu.Lock()
 				requestTimes = append(requestTimes, time.Now())
@@ -162,24 +167,18 @@ var _ = Describe("Registration Integration", func() {
 					w.WriteHeader(http.StatusInternalServerError)
 					return
 				}
-				w.WriteHeader(http.StatusOK)
+				agentOKResponse(w)
+				return
 			}
+			w.WriteHeader(http.StatusNotFound)
 		}))
 
-		cfg = &config.Config{
-			Provider: config.ProviderConfig{
-				Name:        "3tier-sp",
-				DisplayName: "Three Tier Demo SP",
-				Endpoint:    "https://sp.example.com",
-			},
-			DCM: config.DCMConfig{
-				RegistrationURL: mockServer.URL,
-			},
-		}
-
-		registrar, err := registration.NewRegistrar(cfg, logger,
+		registrar, err := registration.NewRegistrar(
+			testCfg(mockServer.URL+"/api/v1alpha1"),
+			logger,
 			registration.SetInitialBackoff(10*time.Millisecond),
 			registration.SetMaxBackoff(200*time.Millisecond),
+			registration.SetReRegistrationInterval(time.Hour),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		ctx, cancel := context.WithCancel(context.Background())
@@ -189,7 +188,7 @@ var _ = Describe("Registration Integration", func() {
 
 		Eventually(func() int32 {
 			return requestCount.Load()
-		}).WithTimeout(5*time.Second).WithPolling(50*time.Millisecond).Should(BeNumerically(">=", int32(4)),
+		}).WithTimeout(5 * time.Second).WithPolling(50 * time.Millisecond).Should(BeNumerically(">=", int32(4)),
 			"expected at least 4 registration attempts")
 
 		mu.Lock()
@@ -208,18 +207,9 @@ var _ = Describe("Registration Integration", func() {
 			w.WriteHeader(http.StatusInternalServerError)
 		}))
 
-		cfg = &config.Config{
-			Provider: config.ProviderConfig{
-				Name:        "3tier-sp",
-				DisplayName: "Three Tier Demo SP",
-				Endpoint:    "https://sp.example.com",
-			},
-			DCM: config.DCMConfig{
-				RegistrationURL: mockServer.URL,
-			},
-		}
-
-		registrar, err := registration.NewRegistrar(cfg, logger,
+		registrar, err := registration.NewRegistrar(
+			testCfg(mockServer.URL+"/api/v1alpha1"),
+			logger,
 			registration.SetInitialBackoff(10*time.Millisecond),
 			registration.SetMaxBackoff(50*time.Millisecond),
 		)
@@ -231,7 +221,7 @@ var _ = Describe("Registration Integration", func() {
 
 		Eventually(func() string {
 			return logBuf.String()
-		}).WithTimeout(3*time.Second).WithPolling(100*time.Millisecond).Should(
+		}).WithTimeout(3 * time.Second).WithPolling(100 * time.Millisecond).Should(
 			And(
 				ContainSubstring("registration"),
 				ContainSubstring("\"level\":\"WARN\""),
@@ -239,34 +229,61 @@ var _ = Describe("Registration Integration", func() {
 			"expected WARN-level log entries about registration failures")
 	})
 
-	It("Done() channel closes after successful registration", func() {
+	It("retries 409 on the re-registration cadence instead of giving up", func() {
+		var requestCount atomic.Int32
+
 		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodPost && r.URL.Path == "/providers" {
-				w.WriteHeader(http.StatusOK)
+			if r.Method == http.MethodPost && r.URL.Path == "/api/v1alpha1/providers" {
+				requestCount.Add(1)
+				w.WriteHeader(http.StatusConflict)
 				return
 			}
 			w.WriteHeader(http.StatusNotFound)
 		}))
 
-		cfg = &config.Config{
-			Provider: config.ProviderConfig{
-				Name:        "3tier-sp",
-				DisplayName: "Three Tier Demo SP",
-				Endpoint:    "https://sp.example.com",
-			},
-			DCM: config.DCMConfig{
-				RegistrationURL: mockServer.URL,
-			},
-		}
-
-		registrar, err := registration.NewRegistrar(cfg, logger)
+		registrar, err := registration.NewRegistrar(
+			testCfg(mockServer.URL+"/api/v1alpha1"),
+			logger,
+			registration.SetReRegistrationInterval(20*time.Millisecond),
+		)
 		Expect(err).NotTo(HaveOccurred())
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		registrar.Start(ctx)
 
-		Eventually(registrar.Done()).WithTimeout(3*time.Second).Should(BeClosed(),
-			"Done() channel should close after successful registration")
+		Eventually(func() int32 {
+			return requestCount.Load()
+		}).WithTimeout(3 * time.Second).WithPolling(20 * time.Millisecond).Should(BeNumerically(">=", int32(2)),
+			"expected repeated 409 retries")
+	})
+
+	It("Done() channel closes after context cancellation", func() {
+		var registered atomic.Bool
+		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && r.URL.Path == "/api/v1alpha1/providers" {
+				agentOKResponse(w)
+				registered.Store(true)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+
+		registrar, err := registration.NewRegistrar(
+			testCfg(mockServer.URL+"/api/v1alpha1"),
+			logger,
+			registration.SetReRegistrationInterval(50*time.Millisecond),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		registrar.Start(ctx)
+		Eventually(registered.Load).WithTimeout(3 * time.Second).WithPolling(20 * time.Millisecond).Should(BeTrue(),
+			"expected registration to succeed before cancel")
+		cancel()
+
+		Eventually(registrar.Done()).WithTimeout(3 * time.Second).Should(BeClosed(),
+			"Done() channel should close after context cancellation")
 	})
 })
