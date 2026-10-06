@@ -1,136 +1,148 @@
+// Package registration handles self-registration with DCM's environment agent.
+//
+// The control-plane /providers API was removed (control-plane#51). Standalone
+// SPs register against environment-agent's POST /api/v1alpha1/providers, the
+// same contract used by osac-service-provider. The agent then advertises
+// three-tier-app-demo on its own POST /agents to the control plane.
 package registration
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
 
+	v1alpha1 "github.com/dcm-project/3-tier-demo-service-provider/api/v1alpha1"
 	"github.com/dcm-project/3-tier-demo-service-provider/internal/config"
+	agentv1alpha1 "github.com/dcm-project/environment-agent/api/v1alpha1"
+	agentclient "github.com/dcm-project/environment-agent/pkg/client"
 )
 
 const (
-	serviceType        = "three-tier-app-demo"
-	httpTimeout        = 30 * time.Second
-	defaultCost        = "low"
-	defaultEnvironment = "dev"
-	defaultHeartbeat   = 15 * time.Second
+	serviceType   = "three-tier-app-demo"
+	schemaVersion = "v1alpha1"
+	httpTimeout   = 30 * time.Second
 )
+
+var endpointSuffix = mustPostPath()
+
+func mustPostPath() string {
+	p, err := v1alpha1.PostPath()
+	if err != nil {
+		panic(fmt.Sprintf("registration: resolving endpoint path from OpenAPI spec: %v", err))
+	}
+	return p
+}
 
 // Option configures a Registrar.
 type Option func(*Registrar)
 
-// SetInitialBackoff sets the initial retry backoff interval.
+// SetInitialBackoff sets the initial retry backoff interval for retryable failures.
 func SetInitialBackoff(d time.Duration) Option {
 	return func(r *Registrar) {
 		r.initialBackoff = d
 	}
 }
 
-// SetMaxBackoff sets the maximum retry backoff interval.
+// SetMaxBackoff sets the maximum retry backoff interval for retryable failures.
 func SetMaxBackoff(d time.Duration) Option {
 	return func(r *Registrar) {
 		r.maxBackoff = d
 	}
 }
 
-// SetHeartbeatInterval sets how often heartbeats are sent after registration.
-func SetHeartbeatInterval(d time.Duration) Option {
+// SetReRegistrationInterval sets how often a successful registration is renewed,
+// and the retry cadence after a 409 (slot held by another provider).
+func SetReRegistrationInterval(d time.Duration) Option {
 	return func(r *Registrar) {
-		r.heartbeatInterval = d
+		r.reRegistrationInterval = d
 	}
 }
 
-// AgentRegistration is the control-plane /agents registration payload.
-type AgentRegistration struct {
-	Name         string   `json:"name"`
-	Environment  string   `json:"environment"`
-	Cost         string   `json:"cost"`
-	TopicName    string   `json:"topic_name"`
-	ServiceTypes []string `json:"service_types"`
+// WithHTTPClient overrides the HTTP client used by the generated
+// environment-agent client. Intended for tests.
+func WithHTTPClient(c *http.Client) Option {
+	return func(r *Registrar) {
+		r.httpClient = c
+	}
 }
 
-type agentRegistrationResponse struct {
-	AgentID string `json:"agent_id"`
-}
-
-type heartbeatRequest struct {
-	ConsumerLag int64     `json:"consumer_lag"`
-	Timestamp   time.Time `json:"timestamp"`
-}
-
-// Registrar handles registration with the DCM agent API.
+// Registrar registers this SP with environment-agent's provider API.
 type Registrar struct {
-	cfg                *config.Config
-	logger             *slog.Logger
-	httpClient         *http.Client
-	baseURL            *url.URL
-	initialBackoff     time.Duration
-	maxBackoff         time.Duration
-	heartbeatInterval  time.Duration
-	startOnce          sync.Once
-	done               chan struct{}
+	cfg                    *config.Config
+	logger                 *slog.Logger
+	client                 *agentclient.ClientWithResponses
+	httpClient             *http.Client
+	initialBackoff         time.Duration
+	maxBackoff             time.Duration
+	reRegistrationInterval time.Duration
+	startOnce              sync.Once
+	done                   chan struct{}
 }
 
-// NewRegistrar creates a Registrar with the given configuration and options.
+// NewRegistrar creates a Registrar targeting cfg.DCM.RegistrationURL
+// (environment-agent base, e.g. http://agent:8080/api/v1alpha1).
 func NewRegistrar(cfg *config.Config, logger *slog.Logger, opts ...Option) (*Registrar, error) {
-	u, err := url.Parse(cfg.DCM.RegistrationURL)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return nil, fmt.Errorf("creating DCM client: invalid registration URL %q", cfg.DCM.RegistrationURL)
-	}
-
 	r := &Registrar{
-		cfg:               cfg,
-		logger:            logger,
-		httpClient:        &http.Client{Timeout: httpTimeout},
-		baseURL:           u,
-		initialBackoff:    1 * time.Second,
-		maxBackoff:        60 * time.Second,
-		heartbeatInterval: defaultHeartbeat,
-		done:              make(chan struct{}),
+		cfg:                    cfg,
+		logger:                 logger,
+		initialBackoff:         1 * time.Second,
+		maxBackoff:             60 * time.Second,
+		reRegistrationInterval: 60 * time.Second,
+		httpClient:             &http.Client{Timeout: httpTimeout},
+		done:                   make(chan struct{}),
 	}
 	for _, opt := range opts {
 		opt(r)
 	}
+
+	client, err := agentclient.NewClientWithResponses(
+		normalizeRegistrationURL(cfg.DCM.RegistrationURL),
+		agentclient.WithHTTPClient(r.httpClient),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating environment-agent client: %w", err)
+	}
+	r.client = client
 	return r, nil
 }
 
-// BuildPayload constructs the agent registration payload from configuration.
-func BuildPayload(cfg *config.Config) AgentRegistration {
-	env := cfg.Provider.Environment
-	if env == "" {
-		env = defaultEnvironment
+// BuildPayload constructs the environment-agent provider registration payload.
+func BuildPayload(cfg *config.Config) agentv1alpha1.Provider {
+	p := agentv1alpha1.Provider{
+		Name:          cfg.Provider.Name,
+		ServiceType:   serviceType,
+		Endpoint:      strings.TrimRight(cfg.Provider.Endpoint, "/") + endpointSuffix,
+		SchemaVersion: schemaVersion,
 	}
-	cost := cfg.Provider.Cost
-	if cost == "" {
-		cost = defaultCost
+	if cfg.Provider.DisplayName != "" {
+		displayName := cfg.Provider.DisplayName
+		p.DisplayName = &displayName
 	}
-	topic := cfg.Provider.TopicName
-	if topic == "" {
-		topic = "dcm.agent." + cfg.Provider.Name
+	if cfg.Provider.Region != "" || cfg.Provider.Zone != "" {
+		meta := &agentv1alpha1.ProviderMetadata{}
+		if cfg.Provider.Region != "" {
+			region := cfg.Provider.Region
+			meta.RegionCode = &region
+		}
+		if cfg.Provider.Zone != "" {
+			zone := cfg.Provider.Zone
+			meta.Zone = &zone
+		}
+		p.Metadata = meta
 	}
-	return AgentRegistration{
-		Name:         cfg.Provider.Name,
-		Environment:  env,
-		Cost:         cost,
-		TopicName:    topic,
-		ServiceTypes: []string{serviceType},
-	}
+	return p
 }
 
-// Start begins the registration + heartbeat process in the background.
+// Start begins registration in the background. Multiple calls are safe.
 func (r *Registrar) Start(ctx context.Context) {
 	r.startOnce.Do(func() {
 		go func() {
 			defer close(r.done)
-			r.run(ctx)
+			r.runLoop(ctx)
 		}()
 	})
 }
@@ -140,135 +152,81 @@ func (r *Registrar) Done() <-chan struct{} {
 	return r.done
 }
 
-func (r *Registrar) run(ctx context.Context) {
-	payload := BuildPayload(r.cfg)
+func (r *Registrar) runLoop(ctx context.Context) {
 	backoff := r.initialBackoff
 
-	var agentID string
 	for {
-		id, err := r.register(ctx, payload)
-		if err == nil {
-			r.logger.Info("registration successful", "agent_id", id, "name", payload.Name)
-			agentID = id
-			break
-		}
-		r.logger.Warn("registration failed, will retry", "error", err)
+		statusCode, err := r.register(ctx)
 
-		timer := time.NewTimer(backoff)
-		select {
-		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
+		switch {
+		case err == nil && (statusCode == http.StatusOK || statusCode == http.StatusCreated):
+			r.logger.Info("registration successful", "name", r.cfg.Provider.Name, "status", statusCode)
+			backoff = r.initialBackoff
+			if !sleepOrDone(ctx, r.reRegistrationInterval) {
+				return
 			}
+			continue
+
+		case err == nil && statusCode == http.StatusConflict:
+			r.logger.Warn("registration conflict: service type already served by another provider, will retry on re-registration cadence",
+				"name", r.cfg.Provider.Name)
+			if !sleepOrDone(ctx, r.reRegistrationInterval) {
+				return
+			}
+			continue
+
+		case err == nil && statusCode >= 400 && statusCode < 500:
+			r.logger.Error("registration failed with non-retryable status, giving up",
+				"name", r.cfg.Provider.Name, "status", statusCode)
 			return
-		case <-timer.C:
+
+		case err == nil:
+			r.logger.Warn("registration returned unexpected status, will retry",
+				"name", r.cfg.Provider.Name, "status", statusCode)
+
+		default:
+			r.logger.Warn("registration request failed, will retry",
+				"name", r.cfg.Provider.Name, "error", err)
 		}
 
+		if !sleepOrDone(ctx, backoff) {
+			return
+		}
 		backoff *= 2
 		if backoff > r.maxBackoff {
 			backoff = r.maxBackoff
 		}
 	}
-
-	r.heartbeatLoop(ctx, agentID)
 }
 
-func (r *Registrar) register(ctx context.Context, payload AgentRegistration) (string, error) {
-	body, err := json.Marshal(payload)
+func (r *Registrar) register(ctx context.Context) (int, error) {
+	payload := BuildPayload(r.cfg)
+	resp, err := r.client.CreateProviderWithResponse(ctx, nil, payload)
 	if err != nil {
-		return "", fmt.Errorf("marshal registration payload: %w", err)
+		return 0, fmt.Errorf("sending registration request: %w", err)
 	}
-
-	endpoint := joinURL(r.baseURL, "agents")
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("sending registration request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := r.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("sending registration request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		if len(respBody) > 200 {
-			respBody = respBody[:200]
-		}
-		return "", fmt.Errorf("registration returned status %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	var result agentRegistrationResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", fmt.Errorf("decode registration response: %w", err)
-	}
-	if result.AgentID == "" {
-		return "", fmt.Errorf("registration response missing agent_id")
-	}
-	return result.AgentID, nil
+	return resp.StatusCode(), nil
 }
 
-func (r *Registrar) heartbeatLoop(ctx context.Context, agentID string) {
-	ticker := time.NewTicker(r.heartbeatInterval)
-	defer ticker.Stop()
-
-	// Send an immediate heartbeat so last_heartbeat is set before the
-	// control-plane health monitor's create_time-based stale cutoff.
-	if err := r.heartbeat(ctx, agentID); err != nil {
-		r.logger.Warn("heartbeat failed", "error", err, "agent_id", agentID)
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if err := r.heartbeat(ctx, agentID); err != nil {
-				r.logger.Warn("heartbeat failed", "error", err, "agent_id", agentID)
-			}
-		}
+func sleepOrDone(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 
-func (r *Registrar) heartbeat(ctx context.Context, agentID string) error {
-	payload := heartbeatRequest{
-		ConsumerLag: 0,
-		Timestamp:   time.Now().UTC(),
+// normalizeRegistrationURL ensures a trailing slash so oapi-codegen's
+// relative "/providers" join keeps the /api/v1alpha1 prefix.
+func normalizeRegistrationURL(raw string) string {
+	if raw == "" {
+		return raw
 	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal heartbeat payload: %w", err)
+	if strings.HasSuffix(raw, "/") {
+		return raw
 	}
-
-	endpoint := joinURL(r.baseURL, "agents", agentID, "heartbeat")
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("sending heartbeat request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := r.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("sending heartbeat request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, resp.Body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("heartbeat returned status %d", resp.StatusCode)
-	}
-	return nil
-}
-
-func joinURL(base *url.URL, parts ...string) string {
-	u := *base
-	path := strings.TrimSuffix(u.EscapedPath(), "/")
-	for _, p := range parts {
-		path += "/" + strings.Trim(p, "/")
-	}
-	u.Path = path
-	u.RawPath = ""
-	return u.String()
+	return raw + "/"
 }

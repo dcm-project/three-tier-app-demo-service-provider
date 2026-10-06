@@ -48,7 +48,8 @@ type StackDBCfg struct {
 	MysqlUser    string `env:"MYSQL_USER"     envDefault:"root"`
 }
 
-// DCMConfig holds DCM registry connection settings.
+// DCMConfig holds environment-agent registration settings.
+// RegistrationURL is the agent's API base (e.g. http://agent:8080/api/v1alpha1).
 type DCMConfig struct {
 	RegistrationURL string `env:"REGISTRATION_URL"`
 }
@@ -58,18 +59,13 @@ type NATSConfig struct {
 	URL string `env:"URL"`
 }
 
-// ProviderConfig holds SP identity for self-registration.
+// ProviderConfig holds SP identity for self-registration with the environment agent.
 type ProviderConfig struct {
 	Name        string `env:"NAME"`
 	DisplayName string `env:"DISPLAY_NAME"`
 	Endpoint    string `env:"ENDPOINT"`
 	Region      string `env:"REGION"`
 	Zone        string `env:"ZONE"`
-	// Environment, Cost, and TopicName map onto the control-plane agent
-	// registration schema. Empty values fall back to registrar defaults.
-	Environment string `env:"ENVIRONMENT"`
-	Cost        string `env:"COST"`
-	TopicName   string `env:"TOPIC_NAME"`
 }
 
 // KubernetesConfig holds cluster settings (same env names as k8s-container-service-provider).
