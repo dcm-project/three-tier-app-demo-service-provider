@@ -259,9 +259,11 @@ var _ = Describe("Registration Integration", func() {
 	})
 
 	It("Done() channel closes after context cancellation", func() {
+		var registered atomic.Bool
 		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodPost && r.URL.Path == "/api/v1alpha1/providers" {
 				agentOKResponse(w)
+				registered.Store(true)
 				return
 			}
 			w.WriteHeader(http.StatusNotFound)
@@ -274,9 +276,11 @@ var _ = Describe("Registration Integration", func() {
 		)
 		Expect(err).NotTo(HaveOccurred())
 		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
 		registrar.Start(ctx)
-		time.Sleep(150 * time.Millisecond)
+		Eventually(registered.Load).WithTimeout(3 * time.Second).WithPolling(20 * time.Millisecond).Should(BeTrue(),
+			"expected registration to succeed before cancel")
 		cancel()
 
 		Eventually(registrar.Done()).WithTimeout(3 * time.Second).Should(BeClosed(),
