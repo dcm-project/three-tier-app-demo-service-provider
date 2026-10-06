@@ -65,6 +65,11 @@ type ProviderConfig struct {
 	Endpoint    string `env:"ENDPOINT"`
 	Region      string `env:"REGION"`
 	Zone        string `env:"ZONE"`
+	// Environment, Cost, and TopicName map onto the control-plane agent
+	// registration schema. Empty values fall back to registrar defaults.
+	Environment string `env:"ENVIRONMENT"`
+	Cost        string `env:"COST"`
+	TopicName   string `env:"TOPIC_NAME"`
 }
 
 // KubernetesConfig holds cluster settings (same env names as k8s-container-service-provider).
